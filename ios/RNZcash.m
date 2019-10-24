@@ -9,11 +9,14 @@
 }
 RCT_EXPORT_MODULE()
 
-RCT_REMAP_METHOD(getNumTransactions, getNumTransactions:(NSUInteger *)N
+RCT_REMAP_METHOD(getNumTransactions, getNumTransactions:(NSUInteger *) N
                  resolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-    resolve(N+42);
+//     NSUInteger const onehundred = 100;
+//     NSNumber *val = [NSNumber numberWithInteger:(N+42)];
+    NSNumber *myNum = [NSNumber numberWithInteger:(N+123)];
+    resolve(myNum);
 }
 
 @end
