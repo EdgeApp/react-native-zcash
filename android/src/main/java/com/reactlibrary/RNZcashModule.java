@@ -19,4 +19,15 @@ public class RNZcashModule extends ReactContextBaseJavaModule {
   public String getName() {
     return "RNZcash";
   }
+
+  @ReactMethod
+  public void getNumTransactions(
+          Integer N,
+          Promise promise) {
+    try {
+      promise.resolve(N+43);
+    } catch (Exception e) {
+      promise.reject("Err", e);
+    }
+  }
 }
