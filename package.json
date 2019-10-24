@@ -1,6 +1,7 @@
 
 {
   "name": "react-native-zcash",
+  "podName": "RNZcash",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
