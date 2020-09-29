@@ -8,10 +8,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-public class DiskletPackage implements ReactPackage {
+public class RNZcashPackage implements ReactPackage {
   @Override
   public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
-    return Arrays.<NativeModule>asList(new DiskletModule(reactContext));
+    return Arrays.<NativeModule>asList(new RNZcashModule(reactContext));
   }
 
   @Override

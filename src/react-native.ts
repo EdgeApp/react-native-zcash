@@ -1,36 +1,14 @@
-import { makeNodeDisklet } from './backends/dummy'
-import { makeLocalStorageDisklet, WebStorage } from './backends/local-storage'
-import { makeMemoryDisklet, MemoryStorage } from './backends/memory'
-import { makeReactNativeDisklet } from './backends/react-native'
-import { DiskletFolder, downgradeDisklet } from './legacy/legacy'
+import { NativeEventEmitter, NativeModules } from 'react-native'
 
-export * from './helpers/helpers'
-export * from './legacy/legacy'
-export * from './types'
-export {
-  makeLocalStorageDisklet,
-  makeMemoryDisklet,
-  makeNodeDisklet,
-  makeReactNativeDisklet
+const { RNZcash } = NativeModules
+
+export function getNumTransactions(n: number): Promise<number> {
+  return RNZcash.getNumTransactions(n)
 }
 
-// legacy API ----------------------------------------------------------------
+type Callback = (...args: any[]) => any
 
-export function makeLocalStorageFolder(
-  storage: WebStorage,
-  opts?: { prefix?: string }
-): DiskletFolder {
-  return downgradeDisklet(makeLocalStorageDisklet(storage, opts))
-}
-
-export function makeMemoryFolder(storage?: MemoryStorage): DiskletFolder {
-  return downgradeDisklet(makeMemoryDisklet(storage))
-}
-
-export function makeNodeFolder(path: string): DiskletFolder {
-  return downgradeDisklet(makeNodeDisklet(path))
-}
-
-export function makeReactNativeFolder(): DiskletFolder {
-  return downgradeDisklet(makeReactNativeDisklet())
+export function subscribeToFoo(callback: Callback): void {
+  const eventEmitter = new NativeEventEmitter(RNZcash)
+  eventEmitter.addListener('FooEvent', callback)
 }

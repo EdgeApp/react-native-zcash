@@ -1,42 +1,43 @@
 {
-  "name": "disklet",
-  "version": "0.4.5",
-  "description": "A tiny, composable filesystem API",
-  "homepage": "https://github.com/EdgeApp/disklet",
+  "name": "react-native-zcash",
+  "version": "0.0.1",
+  "description": "Zcash library for React Native",
+  "homepage": "https://github.com/EdgeApp/react-native-zcash",
   "repository": {
     "type": "git",
-    "url": "git@github.com:Airbitz/disklet.git"
+    "url": "git@github.com:EdgeApp/react-native-zcash.git"
   },
   "license": "MIT",
   "author": "Airbitz, Inc.",
   "contributors": [
-    "William Swanson <william@airbitz.co>",
-    "Paul Puey <paul@airbitz.co>"
+    "William Swanson <william@edge.app>",
+    "Paul Puey <paul@edge.app>",
+    "Matthew Piché <matthew@edge.app>"
   ],
   "files": [
     "android/build.gradle",
     "android/src",
     "CHANGELOG.md",
-    "disklet.podspec",
-    "ios/Disklet.h",
-    "ios/Disklet.m",
-    "ios/Disklet.xcodeproj",
-    "ios/Disklet.xcworkspace",
+    "react-native-zcash.podspec",
+    "ios/RNZcash.h",
+    "ios/RNZcash.m",
+    "ios/RNZcash.xcodeproj",
+    "ios/RNZcash.xcworkspace",
     "lib",
     "package.json",
     "README.md",
     "src"
   ],
-  "main": "lib/disklet.cjs.js",
-  "module": "lib/disklet.js",
-  "browser": "lib/disklet.web.js",
+  "main": "lib/rnzcash.cjs.js",
+  "module": "lib/rnzcash.js",
+  "browser": "lib/rnzcash.web.js",
   "types": "lib/src/index.d.ts",
   "scripts": {
     "fix": "npm run lint -- --fix",
     "lint": "eslint .",
     "precommit": "lint-staged && npm test && npm run prepare",
     "prepare": "rimraf lib && rollup -c && tsc",
-    "test": "mocha -r sucrase/register test/**/*.test.ts"
+    "test": "mocha -r sucrase/register test/*.test.ts"
   },
   "husky": {
     "hooks": {
@@ -86,5 +87,5 @@
     "tmp": "^0.2.1",
     "typescript": "^3.9.3"
   },
-  "react-native": "lib/disklet.rn.js"
+  "react-native": "lib/rnzcash.rn.js"
 }
