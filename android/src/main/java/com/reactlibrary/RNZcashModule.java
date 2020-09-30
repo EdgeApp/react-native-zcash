@@ -58,6 +58,31 @@ public class RNZcashModule extends ReactContextBaseJavaModule {
       promise.reject("Err", e);
     }
   }
+
+  @ReactMethod
+  public void deriveViewKey(
+          String seedBytesHex,
+          Promise promise) {
+    try {
+      promise.resolve(seedBytesHex+"-viewKey");
+    } catch (Exception e) {
+      promise.reject("Err", e);
+    }
+  }
+
+  @ReactMethod
+  public void getShieldedBalance(
+          Promise promise) {
+    try {
+      WritableMap params = Arguments.createMap();
+      params.putString("availableBalance", "123");
+      params.putString("totalBalance", "1234");
+      promise.resolve(params);
+    } catch (Exception e) {
+      promise.reject("Err", e);
+    }
+  }
+
     private void sendEvent(ReactContext reactContext,
                          String eventName,
                          WritableMap params) {

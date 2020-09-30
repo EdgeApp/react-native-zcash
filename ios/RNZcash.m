@@ -25,4 +25,21 @@ RCT_REMAP_METHOD(getNumTransactions, getNumTransactions:(float) N
     resolve(myNum);
 }
 
+RCT_REMAP_METHOD(deriveViewKey, deriveViewKey:(NSString *) seedBytesHex
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject)
+{
+NSString *out = [seedBytesHex stringByAppendingString:@"-viewKey"];
+    resolve(out);
+}
+
+
+RCT_REMAP_METHOD(getShieldedBalance,
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject)
+{
+NSDictionary *dict = @{@"availableBalance":@"123",@"totalBalance": @"1234"};
+    resolve(dict);
+}
+
 @end
