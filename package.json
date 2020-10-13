@@ -1,6 +1,6 @@
 {
   "name": "react-native-zcash",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Zcash library for React Native",
   "homepage": "https://github.com/EdgeApp/react-native-zcash",
   "repository": {
@@ -12,7 +12,8 @@
   "contributors": [
     "William Swanson <william@edge.app>",
     "Paul Puey <paul@edge.app>",
-    "Matthew Piché <matthew@edge.app>"
+    "Matthew Piché <matthew@edge.app>",
+    "Kevin Gorham <kevin.gorham@z.cash>"
   ],
   "files": [
     "android/build.gradle",
