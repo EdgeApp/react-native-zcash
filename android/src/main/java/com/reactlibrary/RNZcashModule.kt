@@ -1,5 +1,7 @@
 package com.reactlibrary;
 
+import cash.z.ecc.android.sdk.ext.fromHex
+import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 
@@ -46,7 +48,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     promise: Promise
   ) {
     try {
-      promise.resolve("$seedBytesHex-viewKey930club")
+      promise.resolve(DerivationTool.deriveViewingKeys(seedBytesHex.fromHex()))
     } catch (e: Exception) {
       promise.reject("Err", e)
     }
@@ -58,8 +60,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
   ) {
     try {
       val params = Arguments.createMap()
-      params.putString("availableBalance", "123")
-      params.putString("totalBalance", "1234")
+      params.putString("availableBalance", "1.1234")
+      params.putString("totalBalance", "2.1234")
       promise.resolve(params)
     } catch (e: Exception) {
       promise.reject("Err", e)

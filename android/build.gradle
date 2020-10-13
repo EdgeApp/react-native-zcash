@@ -1,6 +1,7 @@
 buildscript {
     ext.versions = [
-      'kotlin': '1.4.10'
+      'kotlin': '1.4.10',
+      'zcash': '1.1.0-beta08'
     ]
     repositories {
         google()
@@ -49,4 +50,7 @@ repositories {
 dependencies {
     // React-Native
     implementation 'com.facebook.react:react-native:+'
+
+    // Zcash
+    implementation  "cash.z.ecc.android:zcash-android-sdk-mainnet:${versions.zcash}"
 }
