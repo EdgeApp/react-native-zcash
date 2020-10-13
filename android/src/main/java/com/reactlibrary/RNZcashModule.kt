@@ -1,36 +1,17 @@
 package com.reactlibrary;
 
-import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.Callback;
-import com.facebook.react.bridge.Promise;
-import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.modules.core.DeviceEventManagerModule;
-import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.*
+import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 
-
-
-
-public class RNZcashModule extends ReactContextBaseJavaModule {
-  private final ReactApplicationContext reactContext;
-
-  public RNZcashModule(ReactApplicationContext reactContext) {
-    super(reactContext);
-    this.reactContext = reactContext;
-  }
-
-  @Override
-  public String getName() {
-    return "RNZcash";
-  }
+class RNZcashModule(private val reactContext: ReactApplicationContext) :
+  ReactContextBaseJavaModule(reactContext) {
+  override fun getName() = "RNZcash"
 
   @ReactMethod
-  public void getNumTransactions(
-          Float N,
-          Promise promise) {
+  fun getNumTransactions(
+    N: Float,
+    promise: Promise
+  ) {
     try {
 //      (new Runnable(){
 //        @Override
@@ -45,50 +26,53 @@ public class RNZcashModule extends ReactContextBaseJavaModule {
 //          sendEvent(reactContext, "FooEvent", params);
 //        }
 //      }).run();
-        WritableMap params = Arguments.createMap();
-        params.putString("foo", "bar3");
-      sendEvent(reactContext, "FooEvent", params);
-        try {
-            Thread.sleep(20000);
-        }catch(InterruptedException e) {
+      val params = Arguments.createMap()
+      params.putString("foo", "bar3")
+      sendEvent(reactContext, "FooEvent", params)
+      try {
+        Thread.sleep(20000)
+      } catch (e: InterruptedException) {
         //do nothing
-        }
-      promise.resolve(N+43);
-    } catch (Exception e) {
-      promise.reject("Err", e);
+      }
+      promise.resolve(N + 43)
+    } catch (e: Exception) {
+      promise.reject("Err", e)
     }
   }
 
   @ReactMethod
-  public void deriveViewKey(
-          String seedBytesHex,
-          Promise promise) {
+  fun deriveViewKey(
+    seedBytesHex: String,
+    promise: Promise
+  ) {
     try {
-      promise.resolve(seedBytesHex+"-viewKey930");
-    } catch (Exception e) {
-      promise.reject("Err", e);
+      promise.resolve("$seedBytesHex-viewKey930club")
+    } catch (e: Exception) {
+      promise.reject("Err", e)
     }
   }
 
   @ReactMethod
-  public void getShieldedBalance(
-          Promise promise) {
+  fun getShieldedBalance(
+    promise: Promise
+  ) {
     try {
-      WritableMap params = Arguments.createMap();
-      params.putString("availableBalance", "123");
-      params.putString("totalBalance", "1234");
-      promise.resolve(params);
-    } catch (Exception e) {
-      promise.reject("Err", e);
+      val params = Arguments.createMap()
+      params.putString("availableBalance", "123")
+      params.putString("totalBalance", "1234")
+      promise.resolve(params)
+    } catch (e: Exception) {
+      promise.reject("Err", e)
     }
   }
 
-    private void sendEvent(ReactContext reactContext,
-                         String eventName,
-                         WritableMap params) {
+  private fun sendEvent(
+    reactContext: ReactContext,
+    eventName: String,
+    params: WritableMap
+  ) {
     reactContext
-            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-            .emit(eventName, params);
-
-}
+      .getJSModule(RCTDeviceEventEmitter::class.java)
+      .emit(eventName, params)
+  }
 }
