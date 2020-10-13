@@ -64,7 +64,7 @@ public class RNZcashModule extends ReactContextBaseJavaModule {
           String seedBytesHex,
           Promise promise) {
     try {
-      promise.resolve(seedBytesHex+"-viewKey");
+      promise.resolve(seedBytesHex+"-viewKey930");
     } catch (Exception e) {
       promise.reject("Err", e);
     }
