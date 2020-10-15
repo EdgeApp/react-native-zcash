@@ -1,4 +1,8 @@
-import { NativeEventEmitter, NativeModules } from 'react-native'
+import {
+  EventSubscription,
+  NativeEventEmitter,
+  NativeModules
+} from 'react-native'
 
 import {
   InitializerConfig,
@@ -46,9 +50,11 @@ export const AddressTool = {
 
 class Synchronizer {
   eventEmitter: NativeEventEmitter
+  subscriptions: EventSubscription[]
 
   constructor() {
     this.eventEmitter = new NativeEventEmitter(RNZcash)
+    this.subscriptions = []
   }
 
   async start(): Promise<String> {
@@ -57,6 +63,7 @@ class Synchronizer {
   }
 
   async stop(): Promise<String> {
+    this.unsubscribe()
     const result = await RNZcash.stop()
     return result
   }
@@ -111,6 +118,7 @@ class Synchronizer {
   // Events
 
   subscribe(callbacks: SynchronizerCallbacks): void {
+    // TODO: do a better job of handling when one of these is missing
     this.setListener('BalanceEvent', callbacks.onShieldedBalanceChanged)
     this.setListener('StatusEvent', callbacks.onStatusChanged)
     this.setListener('TransactionEvent', callbacks.onTransactionsChanged)
@@ -118,16 +126,13 @@ class Synchronizer {
   }
 
   private setListener(eventName: string, callback: Callback): void {
-    // TODO: track these listeners and add only one for each event type, perhaps with some kind of composite subscription
-    this.eventEmitter.addListener(eventName, callback)
+    this.subscriptions.push(this.eventEmitter.addListener(eventName, callback))
   }
 
   unsubscribe(): void {
-    // TODO: can we just use some sort of composite subscription and clear that, instead
-    this.eventEmitter.removeAllListeners('BalanceEvent')
-    this.eventEmitter.removeAllListeners('StatusEvent')
-    this.eventEmitter.removeAllListeners('TransactionEvent')
-    this.eventEmitter.removeAllListeners('UpdateEvent')
+    this.subscriptions.forEach(subscription => {
+      subscription.remove()
+    })
   }
 }
 
