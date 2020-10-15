@@ -114,6 +114,34 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex())[0]
     }
 
+    //
+    // Properties
+    //
+
+
+    @ReactMethod
+    fun getLatestNetworkHeight(promise: Promise) = promise.wrap {
+        synchronizer.latestHeight
+    }
+
+    @ReactMethod
+    fun getLatestScannedHeight(promise: Promise) = promise.wrap {
+        // TODO: implement this after switching to StateFlow objects
+        throw NotImplementedError()
+    }
+
+    @ReactMethod
+    fun getProgress(promise: Promise) = promise.wrap {
+        // TODO: implement this after switching to StateFlow objects
+        throw NotImplementedError()
+    }
+
+    @ReactMethod
+    fun getStatus(promise: Promise) = promise.wrap {
+        // TODO: implement this after switching to StateFlow objects
+        throw NotImplementedError()
+    }
+
     @ReactMethod
     fun getShieldedBalance(promise: Promise) = promise.wrap {
         val params = Arguments.createMap()

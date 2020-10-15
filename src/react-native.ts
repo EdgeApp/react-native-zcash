@@ -1,6 +1,6 @@
 import { NativeEventEmitter, NativeModules } from 'react-native'
 
-import { InitializerConfig, WalletBalance } from './types'
+import { InitializerConfig, SynchronizerStatus, WalletBalance } from './types'
 
 const { RNZcash } = NativeModules
 
@@ -65,11 +65,26 @@ class Synchronizer {
     )
   }
 
-  // static init (initializerConfig: InitializerConfig): void
-  // setCallbackHandlers (callbacks: InitializerCallbacks): void
-  // getLatestHeight (): number
-  // getProgress (): number // 0-1
-  // getStatus (): ??
+  async getLatestNetworkHeight(): Promise<number> {
+    const result = await RNZcash.getLatestNetworkHeight()
+    return result
+  }
+
+  async getLatestScannedHeight(): Promise<number> {
+    const result = await RNZcash.getLatestScannedHeight()
+    return result
+  }
+
+  async getProgress(): Promise<number> {
+    const result = await RNZcash.getProgress()
+    return result
+  }
+
+  async getStatus(): Promise<SynchronizerStatus> {
+    const result = await RNZcash.getStatus()
+    return SynchronizerStatus[result.name as keyof typeof SynchronizerStatus]
+  }
+
   async getShieldedBalance(): Promise<WalletBalance> {
     const result = await RNZcash.getShieldedBalance()
     return result
