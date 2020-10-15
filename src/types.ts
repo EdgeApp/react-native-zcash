@@ -7,6 +7,6 @@ export interface InitializerConfig {
   host: string
   port: number
   fullViewingKey: string
-  // alias: ??
+  alias: string
   birthdayHeight: number
 }

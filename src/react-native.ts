@@ -1,4 +1,4 @@
-import { NativeModules } from 'react-native'
+import { NativeEventEmitter, NativeModules } from 'react-native'
 
 import { InitializerConfig, WalletBalance } from './types'
 
@@ -15,11 +15,14 @@ type Callback = (...args: any[]) => any
 // }
 
 export const KeyTool = {
-  deriveViewKey: async (seedBytesHex: string): Promise<string> => {
-    const result = await RNZcash.deriveViewKey(seedBytesHex)
+  deriveViewingKey: async (seedBytesHex: string): Promise<string> => {
+    const result = await RNZcash.deriveViewingKey(seedBytesHex)
+    return result
+  },
+  deriveSpendingKey: async (seedBytesHex: string): Promise<string> => {
+    const result = await RNZcash.deriveSpendingKey(seedBytesHex)
     return result
   }
-  // deriveSpendingKey: async (seedBytesHex: string): Promise<string> => {return ''}
 }
 // const makeAddressTool = () => {
 //   return {
@@ -63,7 +66,7 @@ export const KeyTool = {
 //   accountIndex: number
 //   expiryHeight: number
 //   cancelled: number
-//   submitAttemps: number
+//   submitAttempts: number
 //   errorMessage?: string
 //   errorCode?: number
 //   createTime: number
@@ -76,8 +79,29 @@ export const KeyTool = {
 //   endDate?: number
 // }
 class Synchronizer {
-  constructor(initializerConfig: InitializerConfig) {
+  eventEmitter: NativeEventEmitter
+
+  constructor() {
+    this.eventEmitter = new NativeEventEmitter(RNZcash)
+  }
+
+  async start(): Promise<String> {
+    const result = await RNZcash.start()
+    return result
+  }
+
+  async stop(): Promise<String> {
+    const result = await RNZcash.stop()
+    return result
+  }
+
+  async initialize(initializerConfig: InitializerConfig): Promise<void> {
     console.log(initializerConfig)
+    await RNZcash.initialize(
+      initializerConfig.fullViewingKey,
+      initializerConfig.birthdayHeight,
+      initializerConfig.alias
+    )
   }
 
   // static init (initializerConfig: InitializerConfig): void
@@ -103,11 +127,39 @@ class Synchronizer {
   // stop (): void
   // getPendingTransactions (): PendingTransactions[]
   // getConfirmedTransactions (query: TransactionQuery): ZcashTransaction[]
+
+  // Events
+
+  subscribeToUpdates(callback: Callback): void {
+    this.setListener('UpdateEvent', callback)
+  }
+
+  subscribeToStatus(callback: Callback): void {
+    this.setListener('StatusEvent', callback)
+  }
+
+  subscribeToBalance(callback: Callback): void {
+    this.setListener('BalanceEvent', callback)
+  }
+
+  subscribeToTransactions(callback: Callback): void {
+    this.setListener('TransactionEvent', callback)
+  }
+
+  private setListener(eventName: string, callback: Callback): void {
+    // TODO: track these listeners and add only one for each event type
+    this.eventEmitter.addListener(eventName, callback)
+  }
+
+  unsubscribe(): void {
+    this.eventEmitter.removeAllListeners('UpdateEvent')
+  }
 }
 
 export const makeSynchronizer = async (
   initializerConfig: InitializerConfig
 ): Promise<Synchronizer> => {
-  await snooze(0) // Hack to make typescript happy
-  return new Synchronizer(initializerConfig)
+  const synchronizer = new Synchronizer()
+  await synchronizer.initialize(initializerConfig)
+  return synchronizer
 }
