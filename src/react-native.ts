@@ -129,6 +129,8 @@ class Synchronizer {
   }
 
   async getTransparentBalance(): Promise<WalletBalance> {
+    // TODO: integrate with lightwalletd service to provide taddr balance. Edge probably doesn't need this, though so it can wait.
+
     await snooze(0) // Hack to make typescript happy
     return {
       availableZatoshi: '0',
