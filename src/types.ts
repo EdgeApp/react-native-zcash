@@ -79,4 +79,5 @@ export interface SynchronizerCallbacks {
   onStatusChanged(status: SynchronizerStatus): void
   onUpdate(event: UpdateEvent): void
   onTransactionsChanged(count: number): void
+  onPendingTransactionUpdated(tx: PendingTransaction): void
 }

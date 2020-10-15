@@ -6,6 +6,8 @@ import {
 
 import {
   InitializerConfig,
+  PendingTransaction,
+  SpendInfo,
   SynchronizerCallbacks,
   SynchronizerStatus,
   WalletBalance
@@ -55,6 +57,30 @@ class Synchronizer {
   constructor() {
     this.eventEmitter = new NativeEventEmitter(RNZcash)
     this.subscriptions = []
+  }
+
+  // adding this just for testing, a real app would do something different
+  async readyToSend(): Promise<boolean> {
+    const result = await RNZcash.readyToSend()
+    return result
+  }
+
+  // added for testing, remove later
+  async sendTestTransaction(
+    key: string,
+    address: string
+  ): Promise<PendingTransaction> {
+    // send an amount that's guaranteed to be too large for our wallet and expect it to fail but at least show how this is done
+    // simply change these two values to send a real transaction but ensure the function isn't called too often (although funds can't be spent if notes are unconfirmed)
+    const invalidValue = '9223372036854775807' // Max long value
+    const invalidAccount = 99 // should be 0
+    return this.sendToAddress({
+      zatoshi: invalidValue,
+      toAddress: address,
+      memo: 'this is a test transaction that will fail',
+      fromAccountIndex: invalidAccount,
+      spendingKey: key
+    })
   }
 
   async start(): Promise<String> {
@@ -109,6 +135,19 @@ class Synchronizer {
       totalZatoshi: '0'
     }
   }
+
+  async sendToAddress(spendInfo: SpendInfo): Promise<PendingTransaction> {
+    const result = await RNZcash.spendToAddress(
+      spendInfo.zatoshi,
+      spendInfo.toAddress,
+      spendInfo.memo,
+      spendInfo.fromAccountIndex,
+      // TODO: ask is it okay to send this across the boundary or should it live on the native side and never leave?
+      spendInfo.spendingKey
+    )
+    return result
+  }
+
   // estimateFee (spendInfo: SpendInfo): string
   // sendToAddress (spendInfo: SpendInfo): void
 
@@ -123,6 +162,10 @@ class Synchronizer {
     this.setListener('StatusEvent', callbacks.onStatusChanged)
     this.setListener('TransactionEvent', callbacks.onTransactionsChanged)
     this.setListener('UpdateEvent', callbacks.onUpdate)
+    this.setListener(
+      'PendingTransactionUpdated',
+      callbacks.onPendingTransactionUpdated
+    )
   }
 
   private setListener(eventName: string, callback: Callback): void {

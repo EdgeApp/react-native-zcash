@@ -4,16 +4,19 @@ import androidx.paging.PagedList
 import cash.z.ecc.android.sdk.Initializer
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
+import cash.z.ecc.android.sdk.Synchronizer.Status.DISCONNECTED
+import cash.z.ecc.android.sdk.Synchronizer.Status.SYNCED
 import cash.z.ecc.android.sdk.block.CompactBlockProcessor
-import cash.z.ecc.android.sdk.db.entity.ConfirmedTransaction
+import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
@@ -150,6 +153,40 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         params
     }
 
+    @ReactMethod
+    fun spendToAddress(
+        zatoshi: String,
+        toAddress: String,
+        memo: String,
+        fromAccountIndex: Int,
+        spendingKey: String,
+        promise: Promise
+    ) {
+        try {
+            synchronizer.coroutineScope.launch {
+                synchronizer.sendToAddress(
+                    spendingKey,
+                    zatoshi.toLong(),
+                    toAddress,
+                    memo,
+                    fromAccountIndex
+                ).collectWith(synchronizer.coroutineScope) {tx ->
+                    // this block is called repeatedly for each update to the pending transaction, including all 10 confirmations
+                    // the promise either shouldn't be used (and rely on events instead) or it can be resolved once the transaction is submitted to the network or mined
+                    if (tx.isSubmitSuccess()) { // alternatively use it.isMined() but be careful about making a promise that never resolves!
+                        promise.resolve(true)
+                    } else if (tx.isFailure()) {
+                        promise.resolve(false)
+                    }
+                    sendEvent("PendingTransactionUpdated") { args ->
+                        args.putPendingTransaction(tx)
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            promise.reject("Err", t)
+        }
+    }
 
     //
     // AddressTool
@@ -225,11 +262,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             args.putBoolean("hasChanged", true)
             args.putInt("transactionCount", txList.count())
         }
-
-        // sanity check
-        txList.forEach {
-            twig("Found tx at height: ${it.minedHeight} with value: ${it.value} and toAddr: ${it.toAddress}. Screw $it")
-        }
     }
 
     override fun onCatalystInstanceDestroy() {
@@ -240,6 +272,23 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             moduleScope.cancel()
         } catch (t: Throwable) {
             // ignore
+        }
+    }
+
+
+    //
+    // Test functions (remove these, later)
+    //
+
+    @ReactMethod
+    fun readyToSend(promise: Promise) {
+        try {
+            // for testing purposes, one is enough--we just want to make sure we're not downloading
+            synchronizer.status.filter { it == SYNCED }.onFirstWith(synchronizer.coroutineScope) {
+                promise.resolve(true)
+            }
+        } catch (t: Throwable) {
+            promise.reject("Err", t)
         }
     }
 
@@ -259,12 +308,53 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    /**
+     * Serialize a pending tranaction to a map as an event
+     */
+    private fun WritableMap.putPendingTransaction(tx: PendingTransaction) {
+        // TODO: we need to be really clear on what a non-error value is. For now, just use a placeholder
+        val noError = 0
+        // interface PendingTransaction
+        putInt("accountIndex", tx.accountIndex)
+        putInt("accountIndex", tx.accountIndex)
+        putInt("expiryHeight", tx.expiryHeight)
+        putBoolean("cancelled", tx.isCancelled())
+        putInt("submitAttempts", tx.submitAttempts)
+        putString("errorMessage", tx.errorMessage)
+        putInt("errorCode", tx.errorCode ?: noError)
+        putString("createTime", tx.createTime.toString())
+
+        // interface ZcashTransaction
+        putString("txId", tx.rawTransactionId?.toHexReversed())
+        putString("fee", ZcashSdk.MINERS_FEE_ZATOSHI.toString())
+        putString("zatoshi", tx.value.toString())
+        // TODO: use the extension properties for this once they exist
+        putBoolean("isInbound", false)
+        putBoolean("isOutbound", true) // pendingTransactions are, by definition, outbound
+        putString("toAddress", tx.toAddress)
+        putString("memo", tx.memo.toUtf8Memo())
+        putInt("minedHeight", tx.minedHeight)
+
+        // TODO: missing from API, like minedHeight, this could be set after it is mined and null otherwise
+//        putInt("blockTime", tx.blockTime)
+    }
+
     private fun sendEvent(eventName: String, putArgs: (WritableMap) -> Unit) {
         Arguments.createMap().let { args ->
             putArgs(args)
             reactApplicationContext
                 .getJSModule(RCTDeviceEventEmitter::class.java)
                 .emit(eventName, args)
+        }
+    }
+
+    // TODO: move this to the SDK
+    inline fun ByteArray?.toUtf8Memo(): String {
+        return if (this == null || this[0] >= 0xF5) "" else try {
+            // trim empty and "replacement characters" for codes that can't be represented in unicode
+            String(this, StandardCharsets.UTF_8).trim('\u0000', '\uFFFD')
+        } catch (t: Throwable) {
+            "Unable to parse memo."
         }
     }
 }
