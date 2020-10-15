@@ -64,3 +64,19 @@ export enum SynchronizerStatus {
   /** Indicates that this Synchronizer is fully up to date and ready for all wallet functions. When set, a UI element may want to turn green. In this state, the balance can be trusted. */
   SYNCED
 }
+
+export interface UpdateEvent {
+  isDownloading: boolean
+  isScanning: boolean
+  lastDownloadedHeight: number
+  lastScannedHeight: number
+  scanProgress: number // 0 - 100
+  networkBlockHeight: number
+}
+
+export interface SynchronizerCallbacks {
+  onShieldedBalanceChanged(walletBalance: WalletBalance): void
+  onStatusChanged(status: SynchronizerStatus): void
+  onUpdate(event: UpdateEvent): void
+  onTransactionsChanged(count: number): void
+}

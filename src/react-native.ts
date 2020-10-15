@@ -1,6 +1,11 @@
 import { NativeEventEmitter, NativeModules } from 'react-native'
 
-import { InitializerConfig, SynchronizerStatus, WalletBalance } from './types'
+import {
+  InitializerConfig,
+  SynchronizerCallbacks,
+  SynchronizerStatus,
+  WalletBalance
+} from './types'
 
 const { RNZcash } = NativeModules
 
@@ -105,28 +110,23 @@ class Synchronizer {
 
   // Events
 
-  subscribeToUpdates(callback: Callback): void {
-    this.setListener('UpdateEvent', callback)
-  }
-
-  subscribeToStatus(callback: Callback): void {
-    this.setListener('StatusEvent', callback)
-  }
-
-  subscribeToBalance(callback: Callback): void {
-    this.setListener('BalanceEvent', callback)
-  }
-
-  subscribeToTransactions(callback: Callback): void {
-    this.setListener('TransactionEvent', callback)
+  subscribe(callbacks: SynchronizerCallbacks): void {
+    this.setListener('BalanceEvent', callbacks.onShieldedBalanceChanged)
+    this.setListener('StatusEvent', callbacks.onStatusChanged)
+    this.setListener('TransactionEvent', callbacks.onTransactionsChanged)
+    this.setListener('UpdateEvent', callbacks.onUpdate)
   }
 
   private setListener(eventName: string, callback: Callback): void {
-    // TODO: track these listeners and add only one for each event type
+    // TODO: track these listeners and add only one for each event type, perhaps with some kind of composite subscription
     this.eventEmitter.addListener(eventName, callback)
   }
 
   unsubscribe(): void {
+    // TODO: can we just use some sort of composite subscription and clear that, instead
+    this.eventEmitter.removeAllListeners('BalanceEvent')
+    this.eventEmitter.removeAllListeners('StatusEvent')
+    this.eventEmitter.removeAllListeners('TransactionEvent')
     this.eventEmitter.removeAllListeners('UpdateEvent')
   }
 }
