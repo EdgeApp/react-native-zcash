@@ -1,6 +1,6 @@
 export interface WalletBalance {
-  available: string
-  total: string
+  availableZatoshi: string
+  totalZatoshi: string
 }
 
 export interface InitializerConfig {

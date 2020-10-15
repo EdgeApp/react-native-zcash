@@ -78,8 +78,8 @@ class Synchronizer {
   async getTransparentBalance(): Promise<WalletBalance> {
     await snooze(0) // Hack to make typescript happy
     return {
-      available: '0',
-      total: '0'
+      availableZatoshi: '0',
+      totalZatoshi: '0'
     }
   }
   // estimateFee (spendInfo: SpendInfo): string

@@ -166,8 +166,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     private fun onBalance(walletBalance: CompactBlockProcessor.WalletBalance) {
         sendEvent("BalanceEvent") { args ->
-            args.putString("available", walletBalance.availableZatoshi.convertZatoshiToZecString())
-            args.putString("total", walletBalance.totalZatoshi.convertZatoshiToZecString())
+            args.putString("availableZatoshi", walletBalance.availableZatoshi.toString())
+            args.putString("totalZatoshi", walletBalance.totalZatoshi.toString())
         }
     }
 
