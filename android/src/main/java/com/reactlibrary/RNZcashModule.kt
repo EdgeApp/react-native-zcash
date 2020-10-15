@@ -9,12 +9,24 @@ import cash.z.ecc.android.sdk.db.entity.ConfirmedTransaction
 import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
-import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlin.coroutines.EmptyCoroutineContext
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
+
+    /**
+     * Scope for anything that out-lives the synchronizer, meaning anything that can be used before
+     * the synchronizer starts or after it stops. Everything else falls within the scope of the
+     * synchronizer and should use `synchronizer.coroutineScope` whenever a scope is needed.
+     *
+     * In a real production app, we'd use the scope of the parent activity
+     */
+    var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
 
     lateinit var synchronizer: SdkSynchronizer
     var isInitialized = false
@@ -23,36 +35,38 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     override fun getName() = "RNZcash"
 
     @ReactMethod
-    fun initialize(vk: String, birthdayHeight: Int, alias: String, promise: Promise) {
-        Twig.plant(TroubleshootingTwig())
-        if (!isInitialized) {
-            synchronizer = Synchronizer(Initializer(reactApplicationContext) { config ->
-                config.import(vk, birthdayHeight)
-                config.server("lightwalletd.electriccoin.co", 9067)
-                config.alias = alias
-            }) as SdkSynchronizer
-            isInitialized = true
+    fun initialize(vk: String, birthdayHeight: Int, alias: String, promise: Promise) = promise.wrap {
+            Twig.plant(TroubleshootingTwig())
+            if (!isInitialized) {
+                synchronizer = Synchronizer(Initializer(reactApplicationContext) { config ->
+                    config.import(vk, birthdayHeight)
+                    config.server("lightwalletd.electriccoin.co", 9067)
+                    config.alias = alias
+                }) as SdkSynchronizer
+                isInitialized = true
+            }
+            synchronizer.hashCode().toString()
         }
-        promise.resolve(synchronizer.hashCode().toString())
-    }
 
     @ReactMethod
-    fun start() {
+    fun start(promise: Promise) = promise.wrap {
         if (isInitialized && !isStarted) {
-            synchronizer.start()
+            synchronizer.start(moduleScope)
             synchronizer.coroutineScope.let { scope ->
                 synchronizer.processorInfo.collectWith(scope, ::onUpdate)
                 synchronizer.status.collectWith(scope, ::onStatus)
                 synchronizer.balances.collectWith(scope, ::onBalance)
                 // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
-                synchronizer.clearedTransactions.distinctUntilChanged().collectWith(scope, ::onTransactionsChange)
+                synchronizer.clearedTransactions.distinctUntilChanged()
+                    .collectWith(scope, ::onTransactionsChange)
             }
             isStarted = true
         }
+        isStarted
     }
 
     @ReactMethod
-    fun stop() {
+    fun stop(promise: Promise) = promise.wrap {
         isStarted = false
         synchronizer.stop()
     }
@@ -91,40 +105,57 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun deriveViewingKey(
-        seedBytesHex: String,
-        promise: Promise
-    ) {
+    fun deriveViewingKey(seedBytesHex: String, promise: Promise) = promise.wrap {
+        DerivationTool.deriveViewingKeys(seedBytesHex.fromHex())[0]
+    }
+
+    @ReactMethod
+    fun deriveSpendingKey(seedBytesHex: String, promise: Promise) = promise.wrap {
+        DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex())[0]
+    }
+
+    @ReactMethod
+    fun getShieldedBalance(promise: Promise) = promise.wrap {
+        val params = Arguments.createMap()
+        params.putString("availableBalance", "1.1234")
+        params.putString("totalBalance", "2.1234")
+        params
+    }
+
+
+    //
+    // AddressTool
+    //
+
+    @ReactMethod
+    fun deriveShieldedAddress(viewingKey: String, promise: Promise) = promise.wrap {
+        DerivationTool.deriveShieldedAddress(viewingKey)
+    }
+
+    @ReactMethod
+    fun deriveTransparentAddress(seed: String, promise: Promise) = promise.wrap {
+        DerivationTool.deriveTransparentAddress(seed.fromHex())
+    }
+
+    @ReactMethod
+    fun isValidShieldedAddress(address: String, promise: Promise) {
         try {
-            promise.resolve(DerivationTool.deriveViewingKeys(seedBytesHex.fromHex())[0])
-        } catch (e: Exception) {
-            promise.reject("Err", e)
+            moduleScope.launch {
+                promise.resolve(synchronizer.isValidShieldedAddr(address))
+            }
+        } catch (t: Throwable) {
+            promise.reject("Err", t)
         }
     }
 
     @ReactMethod
-    fun deriveSpendingKey(
-        seedBytesHex: String,
-        promise: Promise
-    ) {
+    fun isValidTransparentAddress(address: String, promise: Promise) {
         try {
-            promise.resolve(DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex())[0])
-        } catch (e: Exception) {
-            promise.reject("Err", e)
-        }
-    }
-
-    @ReactMethod
-    fun getShieldedBalance(
-        promise: Promise
-    ) {
-        try {
-            val params = Arguments.createMap()
-            params.putString("availableBalance", "1.1234")
-            params.putString("totalBalance", "2.1234")
-            promise.resolve(params)
-        } catch (e: Exception) {
-            promise.reject("Err", e)
+            moduleScope.launch {
+                promise.resolve(synchronizer.isValidTransparentAddr(address))
+            }
+        } catch (t: Throwable) {
+            promise.reject("Err", t)
         }
     }
 
@@ -173,6 +204,33 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    override fun onCatalystInstanceDestroy() {
+        super.onCatalystInstanceDestroy()
+        try {
+            // cancelling the parent scope will also stop the synchronizer, through structured concurrency
+            // so calling synchronizer.stop() here is possible but redundant
+            moduleScope.cancel()
+        } catch (t: Throwable) {
+            // ignore
+        }
+    }
+
+
+    //
+    // Utilities
+    //
+
+    /**
+     * Wrap the given block of logic in a promise, rejecting for any error.
+     */
+    private inline fun <T> Promise.wrap(block: () -> T) {
+        try {
+            resolve(block())
+        } catch (t: Throwable) {
+            reject("Err", t)
+        }
+    }
+
     private fun sendEvent(eventName: String, putArgs: (WritableMap) -> Unit) {
         Arguments.createMap().let { args ->
             putArgs(args)
@@ -181,5 +239,4 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 .emit(eventName, args)
         }
     }
-
 }

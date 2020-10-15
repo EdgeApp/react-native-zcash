@@ -9,11 +9,6 @@ const snooze: Function = (ms: number) =>
 
 type Callback = (...args: any[]) => any
 
-// export function subscribeToFoo(callback: Callback): void {
-//   const eventEmitter = new NativeEventEmitter(RNZcash)
-//   eventEmitter.addListener('FooEvent', callback)
-// }
-
 export const KeyTool = {
   deriveViewingKey: async (seedBytesHex: string): Promise<string> => {
     const result = await RNZcash.deriveViewingKey(seedBytesHex)
@@ -24,60 +19,26 @@ export const KeyTool = {
     return result
   }
 }
-// const makeAddressTool = () => {
-//   return {
-//     deriveShieldedAddress: async (viewingKey: string): Promise<string> => {return ''},
-//     deriveTransparentAddress: async (viewingKey: string): Promise<string> => {return ''},
-//     isValidShieldedAddress: async (address: string): Promise<boolean> => {return true},
-//     isValidTransparentAddress: async (address: string): Promise<boolean> => {return true}
-//   }
-// }
-//
-// interface WalletBalance {
-//   shieldedAvailable: string
-//   shieldedTotal: string
-//   transparentAvailable: string
-//   transparentTotal: string
-// }
-// interface InitializerCallbacks {
-//   onError: (e: Error): void
-//   onTransactionsChanged: (): void
-//   onBalanceChanged: (walletBalance: WalletBalance): void
-// }
-// interface SpendInfo {
-//   zatoshi: string
-//   toAddress: string
-//   memo: string
-//   fromAccountIndex: number
-//   spendingKey?: string
-// }
 
-// interface ZcashTransaction {
-//   txId: string
-//   fee: string
-//   value: string
-//   direction: 'inbound' | 'outbound'
-//   toAddress: string
-//   memo?: string
-//   minedHeight: number // 0 for unconfirmed
-//   blockTime: number // UNIX timestamp
-// }
-// type PendingTransaction = ZcashTransaction & {
-//   accountIndex: number
-//   expiryHeight: number
-//   cancelled: number
-//   submitAttempts: number
-//   errorMessage?: string
-//   errorCode?: number
-//   createTime: number
-// }
+export const AddressTool = {
+  deriveShieldedAddress: async (viewingKey: string): Promise<string> => {
+    const result = await RNZcash.deriveShieldedAddress(viewingKey)
+    return result
+  },
+  deriveTransparentAddress: async (seedHex: string): Promise<string> => {
+    const result = await RNZcash.deriveTransparentAddress(seedHex)
+    return result
+  },
+  isValidShieldedAddress: async (address: string): Promise<boolean> => {
+    const result = await RNZcash.isValidShieldedAddress(address)
+    return result
+  },
+  isValidTransparentAddress: async (address: string): Promise<boolean> => {
+    const result = await RNZcash.isValidTransparentAddress(address)
+    return result
+  }
+}
 
-// interface TransactionQuery {
-//   offset?: number
-//   limit?: number
-//   startDate?: number
-//   endDate?: number
-// }
 class Synchronizer {
   eventEmitter: NativeEventEmitter
 
@@ -117,14 +78,13 @@ class Synchronizer {
   async getTransparentBalance(): Promise<WalletBalance> {
     await snooze(0) // Hack to make typescript happy
     return {
-      availableBalance: '0',
-      totalBalance: '0'
+      available: '0',
+      total: '0'
     }
   }
   // estimateFee (spendInfo: SpendInfo): string
   // sendToAddress (spendInfo: SpendInfo): void
-  // start (): void
-  // stop (): void
+
   // getPendingTransactions (): PendingTransactions[]
   // getConfirmedTransactions (query: TransactionQuery): ZcashTransaction[]
 
