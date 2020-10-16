@@ -39,7 +39,6 @@ export interface ZcashTransaction {
 }
 
 export type PendingTransaction = ZcashTransaction & {
-  accountIndex: number
   expiryHeight: number
   cancelled: number
   submitAttempts: number
