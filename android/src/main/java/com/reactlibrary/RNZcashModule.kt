@@ -4,7 +4,6 @@ import androidx.paging.PagedList
 import cash.z.ecc.android.sdk.Initializer
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
-import cash.z.ecc.android.sdk.Synchronizer.Status.DISCONNECTED
 import cash.z.ecc.android.sdk.Synchronizer.Status.SYNCED
 import cash.z.ecc.android.sdk.block.CompactBlockProcessor
 import cash.z.ecc.android.sdk.db.entity.*
@@ -12,9 +11,11 @@ import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
+import com.reactlibrary.sdk.ShieldedTransactionRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
@@ -32,24 +33,36 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
 
     lateinit var synchronizer: SdkSynchronizer
+    lateinit var customRepository: ShieldedTransactionRepository
     var isInitialized = false
     var isStarted = false
 
     override fun getName() = "RNZcash"
 
     @ReactMethod
-    fun initialize(vk: String, birthdayHeight: Int, alias: String, promise: Promise) = promise.wrap {
+    fun initialize(vk: String, birthdayHeight: Int, alias: String, promise: Promise) =
+        promise.wrap {
             Twig.plant(TroubleshootingTwig())
             if (!isInitialized) {
-                synchronizer = Synchronizer(Initializer(reactApplicationContext) { config ->
+                val initializer = Initializer(reactApplicationContext) { config ->
                     config.import(vk, birthdayHeight)
                     config.server("lightwalletd.electriccoin.co", 9067)
                     config.alias = alias
-                }) as SdkSynchronizer
+                }
+                customRepository = createCustomRepository(initializer)
+                synchronizer = Synchronizer(
+                    initializer,
+                    repository = customRepository
+                ) as SdkSynchronizer
                 isInitialized = true
             }
             synchronizer.hashCode().toString()
         }
+
+    // PoC for creating a repository to get transactions in any custom way a wallet developer desires
+    private fun createCustomRepository(initializer: Initializer): ShieldedTransactionRepository {
+        return ShieldedTransactionRepository(initializer.context, 2, initializer.rustBackend.pathDataDb)
+    }
 
     @ReactMethod
     fun start(promise: Promise) = promise.wrap {
@@ -75,36 +88,22 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getNumTransactions(
-        N: Float,
+    fun getTransactions(
+        offset: Int,
+        limit: Int,
+        startDate: Long,
+        endDate: Long,
         promise: Promise
     ) {
-//        try {
-////      (new Runnable(){
-////        @Override
-////        public void run() {
-////          WritableMap params = Arguments.createMap();
-////          params.putString("foo", "bar");
-////          try {
-////            Thread.sleep(20000);
-////          }catch(InterruptedException e) {
-////            //do nothing
-////          }
-////          sendEvent(reactContext, "FooEvent", params);
-////        }
-////      }).run();
-//            val params = Arguments.createMap()
-//            params.putString("foo", "bar3")
-//            sendEvent(reactContext, "FooEvent", params)
-//            try {
-//                Thread.sleep(20000)
-//            } catch (e: InterruptedException) {
-//                //do nothing
-//            }
-//            promise.resolve(N + 43)
-//        } catch (e: Exception) {
-//            promise.reject("Err", e)
-//        }
+        // TODO: wrap and return transactions
+        //customRepository.fetchTransactions(offset, limit, startDate, endDate)
+    }
+
+    @ReactMethod
+    fun getBlockCount(
+        promise: Promise
+    ) = promise.wrap {
+        customRepository.blockCount()
     }
 
     @ReactMethod

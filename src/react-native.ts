@@ -59,20 +59,22 @@ class Synchronizer {
     this.subscriptions = []
   }
 
-  // adding this just for testing, a real app would do something different
+  /// ////////////////////////////////////////////////////////////////
+  // Start PoC behavior
+  //     Here are a few functions to demonstrate functionality but the final library should not have these functions
+  //
   async readyToSend(): Promise<boolean> {
     const result = await RNZcash.readyToSend()
     return result
   }
 
-  // added for testing, remove later
   async sendTestTransaction(
     key: string,
     address: string
   ): Promise<PendingTransaction> {
     // send an amount that's guaranteed to be too large for our wallet and expect it to fail but at least show how this is done
     // simply change these two values to send a real transaction but ensure the function isn't called too often (although funds can't be spent if notes are unconfirmed)
-    const invalidValue = '9223372036854775807' // Max long value
+    const invalidValue = '9223372036854775807' // Max long value (change this to 10000 to send a small transaction equal to the miner's fee on every reload and you could send 10,000 of those before it equals 1 ZEC)
     const invalidAccount = 99 // should be 0
     return this.sendToAddress({
       zatoshi: invalidValue,
@@ -82,6 +84,13 @@ class Synchronizer {
       spendingKey: key
     })
   }
+
+  async getBlockCount(): Promise<number> {
+    const result = await RNZcash.getBlockCount()
+    return result
+  }
+  // End PoC behavior
+  /// ////////////////////////////////////////////////////////////////
 
   async start(): Promise<String> {
     const result = await RNZcash.start()

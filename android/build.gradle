@@ -1,7 +1,8 @@
 buildscript {
     ext.versions = [
       'kotlin': '1.4.10',
-      'zcash': '1.1.0-beta08'
+      'zcash': '1.1.0-beta10',
+      'room': '2.2.5'
     ]
     repositories {
         google()
@@ -16,6 +17,7 @@ buildscript {
 
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-kapt'
 
 android {
   compileSdkVersion 29
@@ -39,6 +41,7 @@ android {
 }
 
 repositories {
+  mavenLocal()
   google()
   jcenter()
     // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
@@ -53,4 +56,7 @@ dependencies {
 
     // Zcash
     implementation  "cash.z.ecc.android:zcash-android-sdk-mainnet:${versions.zcash}"
+
+    // Process Room annotations
+    kapt "androidx.room:room-compiler:${versions.room}"
 }
