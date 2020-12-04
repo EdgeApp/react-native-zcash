@@ -1,1 +1,1 @@
-// No support for node or web
+export * from './react-native'
