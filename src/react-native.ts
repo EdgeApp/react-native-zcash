@@ -197,3 +197,9 @@ export const makeSynchronizer = async (
   await synchronizer.initialize(initializerConfig)
   return synchronizer
 }
+
+export default {
+  KeyTool,
+  AddressTool,
+  makeSynchronizer
+}
