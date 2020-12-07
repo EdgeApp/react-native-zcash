@@ -29,9 +29,7 @@
     "README.md",
     "src"
   ],
-  "main": "lib/rnzcash.cjs.js",
-  "module": "lib/rnzcash.js",
-  "browser": "lib/rnzcash.web.js",
+  "main": "lib/rnzcash.rn.js",
   "types": "lib/src/index.d.ts",
   "scripts": {
     "fix": "npm run lint -- --fix",
@@ -90,6 +88,5 @@
   },
   "peerDependencies": {
     "react-native": ">=0.47.0 <1.0.0"
-  },
-  "react-native": "lib/rnzcash.rn.js"
+  }
 }

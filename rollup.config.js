@@ -1,6 +1,6 @@
 import babel from 'rollup-plugin-babel'
 import filesize from 'rollup-plugin-filesize'
-import flowEntry from 'rollup-plugin-flow-entry'
+// import flowEntry from 'rollup-plugin-flow-entry'
 import resolve from 'rollup-plugin-node-resolve'
 
 import packageJson from './package.json'
@@ -26,7 +26,7 @@ const babelOpts = {
   ]
 }
 const resolveOpts = { extensions }
-const flowOpts = { types: 'src/index.flow.js' }
+// const flowOpts = { types: 'src/index.flow.js' }
 
 const external = [
   'fs',
@@ -37,35 +37,11 @@ const external = [
 ]
 
 export default [
-  // Normal build:
-  {
-    external,
-    input: 'src/index.ts',
-    output: [
-      { file: packageJson.main, format: 'cjs', sourcemap: true },
-      { file: packageJson.module, format: 'es', sourcemap: true }
-    ],
-    plugins: [
-      resolve(resolveOpts),
-      babel(babelOpts),
-      flowEntry(flowOpts),
-      filesize()
-    ]
-  },
-  // Browser build:
-  {
-    external,
-    input: 'src/browser.ts',
-    output: [{ file: packageJson.browser, format: 'cjs', sourcemap: true }],
-    plugins: [resolve(resolveOpts), babel(babelOpts), filesize()]
-  },
   // React Native build:
   {
     external,
     input: 'src/react-native.ts',
-    output: [
-      { file: packageJson['react-native'], format: 'cjs', sourcemap: true }
-    ],
+    output: [{ file: packageJson.main, format: 'cjs', sourcemap: true }],
     plugins: [resolve(resolveOpts), babel(babelOpts), filesize()]
   }
 ]
