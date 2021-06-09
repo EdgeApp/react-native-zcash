@@ -1,4 +1,4 @@
-package com.reactlibrary.sdk
+package app.edge.rnzcash.sdk
 
 import android.content.Context
 import androidx.room.Room

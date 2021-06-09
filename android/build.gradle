@@ -19,9 +19,18 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
 
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+def DEFAULT_COMPILE_SDK_VERSION = 28
+def DEFAULT_BUILD_TOOLS_VERSION = "28.0.2"
+def DEFAULT_MIN_SDK_VERSION = 16
+def DEFAULT_TARGET_SDK_VERSION = 27
+
 android {
-  compileSdkVersion 29
-  buildToolsVersion "29.0.2"
+  compileSdkVersion safeExtGet('compileSdkVersion', DEFAULT_COMPILE_SDK_VERSION)
+  buildToolsVersion safeExtGet('buildToolsVersion', DEFAULT_BUILD_TOOLS_VERSION)
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_1_8
     targetCompatibility JavaVersion.VERSION_1_8
@@ -30,8 +39,8 @@ android {
     jvmTarget = JavaVersion.VERSION_1_8
   }
   defaultConfig {
-    minSdkVersion 21
-    targetSdkVersion 29
+    minSdkVersion safeExtGet('minSdkVersion', DEFAULT_MIN_SDK_VERSION)
+    targetSdkVersion safeExtGet('targetSdkVersion', DEFAULT_TARGET_SDK_VERSION)
     versionCode 1
     versionName "1.0"
   }

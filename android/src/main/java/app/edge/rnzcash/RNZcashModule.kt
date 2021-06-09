@@ -1,4 +1,4 @@
-package com.reactlibrary;
+package app.edge.rnzcash;
 
 import androidx.paging.PagedList
 import cash.z.ecc.android.sdk.Initializer
@@ -11,7 +11,7 @@ import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
-import com.reactlibrary.sdk.ShieldedTransactionRepository
+import app.edge.rnzcash.sdk.ShieldedTransactionRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged

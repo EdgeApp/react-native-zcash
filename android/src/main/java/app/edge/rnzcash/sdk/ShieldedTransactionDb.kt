@@ -1,4 +1,4 @@
-package com.reactlibrary.sdk
+package app.edge.rnzcash.sdk
 
 import androidx.room.Dao
 import androidx.room.Database
