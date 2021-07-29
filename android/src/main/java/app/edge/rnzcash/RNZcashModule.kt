@@ -8,6 +8,7 @@ import cash.z.ecc.android.sdk.Synchronizer.Status.SYNCED
 import cash.z.ecc.android.sdk.block.CompactBlockProcessor
 import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
+import cash.z.ecc.android.sdk.type.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
@@ -38,13 +39,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     override fun getName() = "RNZcash"
 
     @ReactMethod
-    fun initialize(vk: String, birthdayHeight: Int, alias: String, promise: Promise) =
+    fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, promise: Promise) =
         promise.wrap {
             Twig.plant(TroubleshootingTwig())
+            var vk = UnifiedViewingKey(extfvk, extpub)
             if (!isInitialized) {
                 val initializer = Initializer(reactApplicationContext) { config ->
-                    config.import(vk, birthdayHeight)
-                    config.server("lightwalletd.electriccoin.co", 9067)
+                    config.importedWalletBirthday(birthdayHeight)
+                    config.setViewingKeys(vk)
+                    config.setNetwork(ZcashNetwork.Mainnet)
                     config.alias = alias
                 }
                 synchronizer = Synchronizer(
@@ -58,11 +61,12 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun start(promise: Promise) = promise.wrap {
         if (isInitialized && !isStarted) {
+            synchronizer.prepare()
             synchronizer.start(moduleScope)
             synchronizer.coroutineScope.let { scope ->
                 synchronizer.processorInfo.collectWith(scope, ::onUpdate)
                 synchronizer.status.collectWith(scope, ::onStatus)
-                synchronizer.balances.collectWith(scope, ::onBalance)
+                synchronizer.saplingBalances.collectWith(scope, ::onBalance)
                 // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
                 synchronizer.clearedTransactions.distinctUntilChanged()
                     .collectWith(scope, ::onTransactionsChange)
@@ -97,13 +101,17 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun deriveViewingKey(seedBytesHex: String, promise: Promise) = promise.wrap {
-        DerivationTool.deriveViewingKeys(seedBytesHex.fromHex())[0]
+    fun deriveViewingKey(seedBytesHex: String, promise: Promise) {
+        var keys = DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), ZcashNetwork.Mainnet)[0]
+        val map = Arguments.createMap()
+        map.putString("extfvk", keys.extfvk)
+        map.putString("extpub", keys.extpub)
+        promise.resolve(map)
     }
 
     @ReactMethod
     fun deriveSpendingKey(seedBytesHex: String, promise: Promise) = promise.wrap {
-        DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex())[0]
+        DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), ZcashNetwork.Mainnet)[0]
     }
 
     //
@@ -135,11 +143,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getShieldedBalance(promise: Promise) = promise.wrap {
-        val params = Arguments.createMap()
-        params.putString("availableBalance", "1.1234")
-        params.putString("totalBalance", "2.1234")
-        params
+    fun getShieldedBalance(promise: Promise) {
+        val map = Arguments.createMap()
+        map.putString("totalZatoshi", synchronizer.saplingBalances.value.totalZatoshi.toString(10))
+        map.putString("availableZatoshi", synchronizer.saplingBalances.value.availableZatoshi.toString(10))
+        promise.resolve(map)
     }
 
     @ReactMethod
@@ -183,12 +191,12 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveShieldedAddress(viewingKey: String, promise: Promise) = promise.wrap {
-        DerivationTool.deriveShieldedAddress(viewingKey)
+        DerivationTool.deriveShieldedAddress(viewingKey, ZcashNetwork.Mainnet)
     }
 
     @ReactMethod
-    fun deriveTransparentAddress(seed: String, promise: Promise) = promise.wrap {
-        DerivationTool.deriveTransparentAddress(seed.fromHex())
+    fun deriveTransparentAddress(seed: String, network: ZcashNetwork = ZcashNetwork.Mainnet, promise: Promise) = promise.wrap {
+        DerivationTool.deriveTransparentAddress(seed.fromHex(), network)
     }
 
     @ReactMethod
@@ -218,7 +226,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     // Event handlers
     //
 
-    private fun onBalance(walletBalance: CompactBlockProcessor.WalletBalance) {
+    private fun onBalance(walletBalance: WalletBalance) {
         sendEvent("BalanceEvent") { args ->
             args.putString("availableZatoshi", walletBalance.availableZatoshi.toString())
             args.putString("totalZatoshi", walletBalance.totalZatoshi.toString())

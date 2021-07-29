@@ -10,6 +10,7 @@ import {
   SpendInfo,
   SynchronizerCallbacks,
   SynchronizerStatus,
+  UnifiedViewingKey,
   WalletBalance
 } from './types'
 
@@ -21,7 +22,9 @@ const snooze: Function = (ms: number) =>
 type Callback = (...args: any[]) => any
 
 export const KeyTool = {
-  deriveViewingKey: async (seedBytesHex: string): Promise<string> => {
+  deriveViewingKey: async (
+    seedBytesHex: string
+  ): Promise<UnifiedViewingKey> => {
     const result = await RNZcash.deriveViewingKey(seedBytesHex)
     return result
   },
@@ -106,7 +109,8 @@ class Synchronizer {
   async initialize(initializerConfig: InitializerConfig): Promise<void> {
     console.log(initializerConfig)
     await RNZcash.initialize(
-      initializerConfig.fullViewingKey,
+      initializerConfig.fullViewingKey.extfvk,
+      initializerConfig.fullViewingKey.extpub,
       initializerConfig.birthdayHeight,
       initializerConfig.alias
     )

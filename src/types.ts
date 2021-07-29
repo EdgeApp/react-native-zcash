@@ -6,7 +6,7 @@ export interface WalletBalance {
 export interface InitializerConfig {
   host: string
   port: number
-  fullViewingKey: string
+  fullViewingKey: UnifiedViewingKey
   alias: string
   birthdayHeight: number
 }
@@ -62,6 +62,11 @@ export enum SynchronizerStatus {
   ENHANCING,
   /** Indicates that this Synchronizer is fully up to date and ready for all wallet functions. When set, a UI element may want to turn green. In this state, the balance can be trusted. */
   SYNCED
+}
+
+export interface UnifiedViewingKey {
+  extfvk: string
+  extpub: string
 }
 
 export interface UpdateEvent {
