@@ -11,7 +11,6 @@ import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
-import app.edge.rnzcash.sdk.ShieldedTransactionRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -33,7 +32,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
 
     lateinit var synchronizer: SdkSynchronizer
-    lateinit var customRepository: ShieldedTransactionRepository
     var isInitialized = false
     var isStarted = false
 
@@ -49,20 +47,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     config.server("lightwalletd.electriccoin.co", 9067)
                     config.alias = alias
                 }
-                customRepository = createCustomRepository(initializer)
                 synchronizer = Synchronizer(
-                    initializer,
-                    repository = customRepository
+                    initializer
                 ) as SdkSynchronizer
                 isInitialized = true
             }
             synchronizer.hashCode().toString()
         }
-
-    // PoC for creating a repository to get transactions in any custom way a wallet developer desires
-    private fun createCustomRepository(initializer: Initializer): ShieldedTransactionRepository {
-        return ShieldedTransactionRepository(initializer.context, 2, initializer.rustBackend.pathDataDb)
-    }
 
     @ReactMethod
     fun start(promise: Promise) = promise.wrap {
@@ -103,7 +94,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun getBlockCount(
         promise: Promise
     ) = promise.wrap {
-        customRepository.blockCount()
     }
 
     @ReactMethod
