@@ -252,7 +252,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    private fun onTransactionsChange(txList: PagedList<ConfirmedTransaction>) {
+    private fun onTransactionsChange(txList: List<ConfirmedTransaction>) {
         // send a tickle and allow the client to follow up with a poll
         // however, we could also just send the client exactly what it wants (like the last 10 txs)
         sendEvent("TransactionEvent") { args ->
