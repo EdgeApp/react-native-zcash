@@ -5,6 +5,8 @@ import {
 } from 'react-native'
 
 import {
+  BlockRange,
+  ConfirmedTransaction,
   InitializerConfig,
   PendingTransaction,
   SpendInfo,
@@ -149,6 +151,11 @@ class Synchronizer {
       availableZatoshi: '0',
       totalZatoshi: '0'
     }
+  }
+
+  async getTransactions(range: BlockRange): Promise<ConfirmedTransaction[]> {
+    const result = await RNZcash.getTransactions(range.first, range.last)
+    return result
   }
 
   async sendToAddress(spendInfo: SpendInfo): Promise<PendingTransaction> {

@@ -8,6 +8,7 @@ import cash.z.ecc.android.sdk.Synchronizer.Status.SYNCED
 import cash.z.ecc.android.sdk.block.CompactBlockProcessor
 import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
+import cash.z.ecc.android.sdk.transaction.*
 import cash.z.ecc.android.sdk.type.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
@@ -19,6 +20,16 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
+
+class WalletSynchronizer constructor(val initializer: Initializer)  {
+    
+    val synchronizer: SdkSynchronizer = Synchronizer(
+        initializer
+    ) as SdkSynchronizer
+    val repository = PagedTransactionRepository(initializer.context, 10, initializer.rustBackend, initializer.birthday, initializer.viewingKeys)
+    var isInitialized = false
+    var isStarted = false
+}
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -33,10 +44,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
 
     lateinit var synchronizer: SdkSynchronizer
+    lateinit var repository: PagedTransactionRepository
     var isInitialized = false
     var isStarted = false
 
     override fun getName() = "RNZcash"
+
+    private fun createRepository(initializer: Initializer): PagedTransactionRepository {
+        return PagedTransactionRepository(initializer.context, 2, initializer.rustBackend, initializer.birthday, initializer.viewingKeys)
+    }
 
     @ReactMethod
     fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, promise: Promise) =
@@ -53,6 +69,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 synchronizer = Synchronizer(
                     initializer
                 ) as SdkSynchronizer
+                repository = createRepository(initializer)
                 isInitialized = true
             }
             synchronizer.hashCode().toString()
@@ -71,6 +88,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 synchronizer.clearedTransactions.distinctUntilChanged()
                     .collectWith(scope, ::onTransactionsChange)
             }
+            repository.prepare()
             isStarted = true
         }
         isStarted
@@ -83,15 +101,24 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getTransactions(
-        offset: Int,
-        limit: Int,
-        startDate: Long,
-        endDate: Long,
-        promise: Promise
-    ) {
-        // TODO: wrap and return transactions
-        //customRepository.fetchTransactions(offset, limit, startDate, endDate)
+    fun getTransactions(first: Int, last: Int, promise: Promise) {
+        moduleScope.launch {
+            val result = repository.findNewTransactions(first..last)
+            val nativeArray = Arguments.createArray()
+
+            for (i in 0..result.size - 1) {
+                val map = Arguments.createMap()
+                map.putString("value", result[i].value.toString())
+                map.putInt("minedHeight", result[i].minedHeight)
+                map.putInt("blockTimeInSeconds", result[i].blockTimeInSeconds.toInt())
+                map.putString("rawTransactionId", result[i].rawTransactionId.toHexReversed())
+                if (result[i].memo != null) map.putString("memo", result[i].memo?.decodeToString()?.trim('\u0000', '\uFFFD'))
+                if (result[i].toAddress != null) map.putString("toAddress", result[i].toAddress)
+                nativeArray.pushMap(map)
+            }
+
+            promise.resolve(nativeArray)
+        }
     }
 
     @ReactMethod

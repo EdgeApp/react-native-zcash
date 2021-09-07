@@ -85,3 +85,16 @@ export interface SynchronizerCallbacks {
   onTransactionsChanged(count: number): void
   onPendingTransactionUpdated(tx: PendingTransaction): void
 }
+
+export interface BlockRange {
+  first: number
+  last: number
+}
+
+export interface ConfirmedTransaction {
+  value: string
+  memo?: string
+  minedHeight: number
+  rawTransactionId: string
+  toAddress?: string
+}
