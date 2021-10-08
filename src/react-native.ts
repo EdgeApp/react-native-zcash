@@ -58,10 +58,12 @@ export const AddressTool = {
 class Synchronizer {
   eventEmitter: NativeEventEmitter
   subscriptions: EventSubscription[]
+  alias: string
 
-  constructor() {
+  constructor(alias: string) {
     this.eventEmitter = new NativeEventEmitter(RNZcash)
     this.subscriptions = []
+    this.alias = alias
   }
 
   /// ////////////////////////////////////////////////////////////////
@@ -98,13 +100,13 @@ class Synchronizer {
   /// ////////////////////////////////////////////////////////////////
 
   async start(): Promise<String> {
-    const result = await RNZcash.start()
+    const result = await RNZcash.start(this.alias)
     return result
   }
 
   async stop(): Promise<String> {
     this.unsubscribe()
-    const result = await RNZcash.stop()
+    const result = await RNZcash.stop(this.alias)
     return result
   }
 
@@ -118,8 +120,8 @@ class Synchronizer {
     )
   }
 
-  async getLatestNetworkHeight(): Promise<number> {
-    const result = await RNZcash.getLatestNetworkHeight()
+  async getLatestNetworkHeight(alias: string): Promise<number> {
+    const result = await RNZcash.getLatestNetworkHeight(alias)
     return result
   }
 
@@ -139,7 +141,7 @@ class Synchronizer {
   }
 
   async getShieldedBalance(): Promise<WalletBalance> {
-    const result = await RNZcash.getShieldedBalance()
+    const result = await RNZcash.getShieldedBalance(this.alias)
     return result
   }
 
@@ -154,12 +156,17 @@ class Synchronizer {
   }
 
   async getTransactions(range: BlockRange): Promise<ConfirmedTransaction[]> {
-    const result = await RNZcash.getTransactions(range.first, range.last)
+    const result = await RNZcash.getTransactions(
+      this.alias,
+      range.first,
+      range.last
+    )
     return result
   }
 
   async sendToAddress(spendInfo: SpendInfo): Promise<PendingTransaction> {
     const result = await RNZcash.spendToAddress(
+      this.alias,
       spendInfo.zatoshi,
       spendInfo.toAddress,
       spendInfo.memo,
@@ -204,7 +211,7 @@ class Synchronizer {
 export const makeSynchronizer = async (
   initializerConfig: InitializerConfig
 ): Promise<Synchronizer> => {
-  const synchronizer = new Synchronizer()
+  const synchronizer = new Synchronizer(initializerConfig.alias)
   await synchronizer.initialize(initializerConfig)
   return synchronizer
 }

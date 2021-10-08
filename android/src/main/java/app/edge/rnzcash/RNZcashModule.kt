@@ -42,68 +42,65 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
      * In a real production app, we'd use the scope of the parent activity
      */
     var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
-
-    lateinit var synchronizer: SdkSynchronizer
-    lateinit var repository: PagedTransactionRepository
-    var isInitialized = false
-    var isStarted = false
+    var synchronizerMap = mutableMapOf<String, WalletSynchronizer>()
 
     override fun getName() = "RNZcash"
-
-    private fun createRepository(initializer: Initializer): PagedTransactionRepository {
-        return PagedTransactionRepository(initializer.context, 2, initializer.rustBackend, initializer.birthday, initializer.viewingKeys)
-    }
 
     @ReactMethod
     fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, promise: Promise) =
         promise.wrap {
             Twig.plant(TroubleshootingTwig())
             var vk = UnifiedViewingKey(extfvk, extpub)
-            if (!isInitialized) {
+            if (synchronizerMap[alias] == null) {
                 val initializer = Initializer(reactApplicationContext) { config ->
                     config.importedWalletBirthday(birthdayHeight)
                     config.setViewingKeys(vk)
                     config.setNetwork(ZcashNetwork.Mainnet)
                     config.alias = alias
                 }
-                synchronizer = Synchronizer(
-                    initializer
-                ) as SdkSynchronizer
-                repository = createRepository(initializer)
-                isInitialized = true
+                synchronizerMap[alias] = WalletSynchronizer(initializer)
+                val wallet = getWallet(alias)
+                wallet.isInitialized = true
             }
-            synchronizer.hashCode().toString()
+            val wallet = getWallet(alias)
+            wallet.synchronizer.hashCode().toString()
+            
         }
 
     @ReactMethod
-    fun start(promise: Promise) = promise.wrap {
-        if (isInitialized && !isStarted) {
-            synchronizer.prepare()
-            synchronizer.start(moduleScope)
-            synchronizer.coroutineScope.let { scope ->
-                synchronizer.processorInfo.collectWith(scope, ::onUpdate)
-                synchronizer.status.collectWith(scope, ::onStatus)
-                synchronizer.saplingBalances.collectWith(scope, ::onBalance)
+    fun start(alias: String, promise: Promise) = promise.wrap {
+        val wallet = getWallet(alias)
+        if (wallet.isInitialized && !wallet.isStarted) {
+            wallet.synchronizer.prepare()
+            wallet.synchronizer.start(moduleScope)
+            wallet.synchronizer.coroutineScope.let { scope ->
+                wallet.synchronizer.processorInfo.collectWith(scope, ::onUpdate)
+                wallet.synchronizer.status.collectWith(scope, ::onStatus)
+                wallet.synchronizer.saplingBalances.collectWith(scope, ::onBalance)
                 // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
-                synchronizer.clearedTransactions.distinctUntilChanged()
+                wallet.synchronizer.clearedTransactions.distinctUntilChanged()
                     .collectWith(scope, ::onTransactionsChange)
             }
-            repository.prepare()
-            isStarted = true
+            wallet.repository.prepare()
+            wallet.isStarted = true
         }
-        isStarted
+        wallet.isStarted
     }
 
     @ReactMethod
-    fun stop(promise: Promise) = promise.wrap {
-        isStarted = false
-        synchronizer.stop()
+    fun stop(alias: String, promise: Promise) = promise.wrap {
+        val wallet = getWallet(alias)
+        wallet.synchronizer.stop()
+        wallet.isStarted = false
+        wallet.isInitialized = false
+        synchronizerMap.remove(alias)
     }
 
     @ReactMethod
-    fun getTransactions(first: Int, last: Int, promise: Promise) {
+    fun getTransactions(alias: String, first: Int, last: Int, promise: Promise) {
+        val wallet = getWallet(alias)
         moduleScope.launch {
-            val result = repository.findNewTransactions(first..last)
+            val result = wallet.repository.findNewTransactions(first..last)
             val nativeArray = Arguments.createArray()
 
             for (i in 0..result.size - 1) {
@@ -147,8 +144,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
 
     @ReactMethod
-    fun getLatestNetworkHeight(promise: Promise) = promise.wrap {
-        synchronizer.latestHeight
+    fun getLatestNetworkHeight(alias: String, promise: Promise) = promise.wrap {
+        val wallet = getWallet(alias)
+        wallet.synchronizer.latestHeight
     }
 
     @ReactMethod
@@ -170,15 +168,17 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getShieldedBalance(promise: Promise) {
+    fun getShieldedBalance(alias: String, promise: Promise) {
+        val wallet = getWallet(alias)
         val map = Arguments.createMap()
-        map.putString("totalZatoshi", synchronizer.saplingBalances.value.totalZatoshi.toString(10))
-        map.putString("availableZatoshi", synchronizer.saplingBalances.value.availableZatoshi.toString(10))
+        map.putString("totalZatoshi", wallet.synchronizer.saplingBalances.value.totalZatoshi.toString(10))
+        map.putString("availableZatoshi", wallet.synchronizer.saplingBalances.value.availableZatoshi.toString(10))
         promise.resolve(map)
     }
 
     @ReactMethod
     fun spendToAddress(
+        alias: String,
         zatoshi: String,
         toAddress: String,
         memo: String,
@@ -186,15 +186,16 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         spendingKey: String,
         promise: Promise
     ) {
+        val wallet = getWallet(alias)
         try {
-            synchronizer.coroutineScope.launch {
-                synchronizer.sendToAddress(
+            wallet.synchronizer.coroutineScope.launch {
+                wallet.synchronizer.sendToAddress(
                     spendingKey,
                     zatoshi.toLong(),
                     toAddress,
                     memo,
                     fromAccountIndex
-                ).collectWith(synchronizer.coroutineScope) {tx ->
+                ).collectWith(wallet.synchronizer.coroutineScope) {tx ->
                     // this block is called repeatedly for each update to the pending transaction, including all 10 confirmations
                     // the promise either shouldn't be used (and rely on events instead) or it can be resolved once the transaction is submitted to the network or mined
                     if (tx.isSubmitSuccess()) { // alternatively use it.isMined() but be careful about making a promise that never resolves!
@@ -227,10 +228,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun isValidShieldedAddress(address: String, promise: Promise) {
+    fun isValidShieldedAddress(alias: String, address: String, promise: Promise) {
+        val wallet = getWallet(alias)
         try {
             moduleScope.launch {
-                promise.resolve(synchronizer.isValidShieldedAddr(address))
+                promise.resolve(wallet.synchronizer.isValidShieldedAddr(address))
             }
         } catch (t: Throwable) {
             promise.reject("Err", t)
@@ -238,10 +240,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun isValidTransparentAddress(address: String, promise: Promise) {
+    fun isValidTransparentAddress(alias: String, address: String, promise: Promise) {
+        val wallet = getWallet(alias)
         try {
             moduleScope.launch {
-                promise.resolve(synchronizer.isValidTransparentAddr(address))
+                promise.resolve(wallet.synchronizer.isValidTransparentAddr(address))
             }
         } catch (t: Throwable) {
             promise.reject("Err", t)
@@ -305,10 +308,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     //
 
     @ReactMethod
-    fun readyToSend(promise: Promise) {
+    fun readyToSend(alias: String, promise: Promise) {
+        val wallet = getWallet(alias)
         try {
             // for testing purposes, one is enough--we just want to make sure we're not downloading
-            synchronizer.status.filter { it == SYNCED }.onFirstWith(synchronizer.coroutineScope) {
+            wallet.synchronizer.status.filter { it == SYNCED }.onFirstWith(wallet.synchronizer.coroutineScope) {
                 promise.resolve(true)
             }
         } catch (t: Throwable) {
@@ -321,6 +325,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     // Utilities
     //
 
+    /**
+     * Retrieve wallet object from synchronizer map
+     */    
+    private fun getWallet(alias: String): WalletSynchronizer {
+        val wallet = synchronizerMap.get(alias)
+        if (wallet == null) throw Exception("Wallet not found")
+        return wallet
+    }
+    
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
      */
