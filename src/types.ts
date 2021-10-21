@@ -4,8 +4,9 @@ export interface WalletBalance {
 }
 
 export interface InitializerConfig {
-  host: string
-  port: number
+  networkName: string
+  defaultHost: string
+  defaultPort: number
   fullViewingKey: UnifiedViewingKey
   alias: string
   birthdayHeight: number

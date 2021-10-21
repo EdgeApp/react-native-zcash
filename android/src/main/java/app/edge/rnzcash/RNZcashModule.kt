@@ -44,10 +44,12 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
     var synchronizerMap = mutableMapOf<String, WalletSynchronizer>()
 
+    val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
+
     override fun getName() = "RNZcash"
 
     @ReactMethod
-    fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, promise: Promise) =
+    fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
         promise.wrap {
             Twig.plant(TroubleshootingTwig())
             var vk = UnifiedViewingKey(extfvk, extpub)
@@ -55,7 +57,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 val initializer = Initializer(reactApplicationContext) { config ->
                     config.importedWalletBirthday(birthdayHeight)
                     config.setViewingKeys(vk)
-                    config.setNetwork(ZcashNetwork.Mainnet)
+                    config.setNetwork(networks[networkName] ?: ZcashNetwork.Mainnet, defaultHost, defaultPort)
                     config.alias = alias
                 }
                 synchronizerMap[alias] = WalletSynchronizer(initializer)

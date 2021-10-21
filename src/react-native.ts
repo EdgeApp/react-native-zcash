@@ -116,7 +116,10 @@ class Synchronizer {
       initializerConfig.fullViewingKey.extfvk,
       initializerConfig.fullViewingKey.extpub,
       initializerConfig.birthdayHeight,
-      initializerConfig.alias
+      initializerConfig.alias,
+      initializerConfig.networkName,
+      initializerConfig.defaultHost,
+      initializerConfig.defaultPort
     )
   }
 
