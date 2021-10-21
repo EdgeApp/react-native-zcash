@@ -116,16 +116,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             wallet.repository.prepare()
             wallet.isStarted = true
         }
-        wallet.isStarted
+        "success"
     }
 
     @ReactMethod
     fun stop(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
         wallet.synchronizer.stop()
-        wallet.isStarted = false
-        wallet.isInitialized = false
         synchronizerMap.remove(alias)
+        "success"
     }
 
     @ReactMethod
