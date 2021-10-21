@@ -27,7 +27,6 @@ class WalletSynchronizer constructor(val initializer: Initializer)  {
         initializer
     ) as SdkSynchronizer
     val repository = PagedTransactionRepository(initializer.context, 10, initializer.rustBackend, initializer.birthday, initializer.viewingKeys)
-    var isInitialized = false
     var isStarted = false
 }
 
@@ -62,7 +61,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 }
                 synchronizerMap[alias] = WalletSynchronizer(initializer)
                 val wallet = getWallet(alias)
-                wallet.isInitialized = true
             }
             val wallet = getWallet(alias)
             wallet.synchronizer.hashCode().toString()
@@ -72,7 +70,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun start(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
-        if (wallet.isInitialized && !wallet.isStarted) {
+        if (!wallet.isStarted) {
             wallet.synchronizer.prepare()
             wallet.synchronizer.start(moduleScope)
             wallet.synchronizer.coroutineScope.let { scope ->
