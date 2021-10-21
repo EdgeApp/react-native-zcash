@@ -277,8 +277,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun isValidShieldedAddress(alias: String, address: String, promise: Promise) {
-        val wallet = getWallet(alias)
+    fun isValidShieldedAddress(address: String, promise: Promise) {
+        val wallet = getAnyWallet()
         try {
             moduleScope.launch {
                 promise.resolve(wallet.synchronizer.isValidShieldedAddr(address))
@@ -290,7 +290,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun isValidTransparentAddress(alias: String, address: String, promise: Promise) {
-        val wallet = getWallet(alias)
+        val wallet = getAnyWallet()
         try {
             moduleScope.launch {
                 promise.resolve(wallet.synchronizer.isValidTransparentAddr(address))
@@ -343,6 +343,16 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         return wallet
     }
     
+    
+    /**
+     * Retrieve any wallet object for tasks that need simple synchronizer 
+     * functions like address validation
+     */
+    private fun getAnyWallet(): WalletSynchronizer {
+        val wallet = synchronizerMap.firstNotNullOf { it.takeIf { it != null } }
+        return wallet.value
+    }
+
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
      */
