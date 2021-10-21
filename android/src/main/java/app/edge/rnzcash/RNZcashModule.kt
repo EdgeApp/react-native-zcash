@@ -76,12 +76,42 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             wallet.synchronizer.prepare()
             wallet.synchronizer.start(moduleScope)
             wallet.synchronizer.coroutineScope.let { scope ->
-                wallet.synchronizer.processorInfo.collectWith(scope, ::onUpdate)
-                wallet.synchronizer.status.collectWith(scope, ::onStatus)
-                wallet.synchronizer.saplingBalances.collectWith(scope, ::onBalance)
+                wallet.synchronizer.processorInfo.collectWith(scope, { update ->
+                    sendEvent("UpdateEvent") { args ->
+                        update.let { info ->
+                            args.putString("alias", alias)
+                            args.putBoolean("isDownloading", info.isDownloading)
+                            args.putBoolean("isScanning", info.isScanning)
+                            args.putInt("lastDownloadedHeight", info.lastDownloadedHeight)
+                            args.putInt("lastScannedHeight", info.lastScannedHeight)
+                            args.putInt("scanProgress", info.scanProgress)
+                            args.putInt("networkBlockHeight", info.networkBlockHeight)
+                        }
+                    }
+                })
+                wallet.synchronizer.status.collectWith(scope, { status -> 
+                    sendEvent("StatusEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putString("name", status.toString())
+                    }
+                }
+                )
+                wallet.synchronizer.saplingBalances.collectWith(scope, { walletBalance ->
+                    sendEvent("BalanceEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putString("availableZatoshi", walletBalance.availableZatoshi.toString())
+                        args.putString("totalZatoshi", walletBalance.totalZatoshi.toString())
+                    }
+                })
                 // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
                 wallet.synchronizer.clearedTransactions.distinctUntilChanged()
-                    .collectWith(scope, ::onTransactionsChange)
+                    .collectWith(scope, { txList ->
+                        sendEvent("TransactionEvent") { args ->
+                            args.putString("alias", alias)
+                            args.putBoolean("hasChanged", true)
+                            args.putInt("transactionCount", txList.count())
+                        }
+                    })
             }
             wallet.repository.prepare()
             wallet.isStarted = true
@@ -258,46 +288,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             }
         } catch (t: Throwable) {
             promise.reject("Err", t)
-        }
-    }
-
-
-    //
-    // Event handlers
-    //
-
-    private fun onBalance(walletBalance: WalletBalance) {
-        sendEvent("BalanceEvent") { args ->
-            args.putString("availableZatoshi", walletBalance.availableZatoshi.toString())
-            args.putString("totalZatoshi", walletBalance.totalZatoshi.toString())
-        }
-    }
-
-    private fun onStatus(status: Synchronizer.Status) {
-        sendEvent("StatusEvent") { args ->
-            args.putString("name", status.name)
-        }
-    }
-
-    private fun onUpdate(processorInfo: CompactBlockProcessor.ProcessorInfo) {
-        sendEvent("UpdateEvent") { args ->
-            processorInfo.let { info ->
-                args.putBoolean("isDownloading", info.isDownloading)
-                args.putBoolean("isScanning", info.isScanning)
-                args.putInt("lastDownloadedHeight", info.lastDownloadedHeight)
-                args.putInt("lastScannedHeight", info.lastScannedHeight)
-                args.putInt("scanProgress", info.scanProgress)
-                args.putInt("networkBlockHeight", info.networkBlockHeight)
-            }
-        }
-    }
-
-    private fun onTransactionsChange(txList: List<ConfirmedTransaction>) {
-        // send a tickle and allow the client to follow up with a poll
-        // however, we could also just send the client exactly what it wants (like the last 10 txs)
-        sendEvent("TransactionEvent") { args ->
-            args.putBoolean("hasChanged", true)
-            args.putInt("transactionCount", txList.count())
         }
     }
 

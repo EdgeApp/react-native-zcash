@@ -193,15 +193,21 @@ class Synchronizer {
   // Events
 
   subscribe(callbacks: SynchronizerCallbacks): void {
-    // TODO: do a better job of handling when one of these is missing
-    this.setListener('BalanceEvent', callbacks.onShieldedBalanceChanged)
-    this.setListener('StatusEvent', callbacks.onStatusChanged)
-    this.setListener('TransactionEvent', callbacks.onTransactionsChanged)
-    this.setListener('UpdateEvent', callbacks.onUpdate)
-    this.setListener(
-      'PendingTransactionUpdated',
-      callbacks.onPendingTransactionUpdated
-    )
+    this.setListener('BalanceEvent', arg => {
+      if (arg.alias === this.alias) callbacks.onShieldedBalanceChanged(arg)
+    })
+    this.setListener('StatusEvent', arg => {
+      if (arg.alias === this.alias) callbacks.onStatusChanged(arg)
+    })
+    this.setListener('TransactionEvent', arg => {
+      if (arg.alias === this.alias) callbacks.onTransactionsChanged(arg)
+    })
+    this.setListener('UpdateEvent', arg => {
+      if (arg.alias === this.alias) callbacks.onUpdate(arg)
+    })
+    this.setListener('PendingTransactionUpdated', arg => {
+      if (arg.alias === this.alias) callbacks.onPendingTransactionUpdated(arg)
+    })
   }
 
   private setListener(eventName: string, callback: Callback): void {
