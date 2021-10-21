@@ -239,8 +239,18 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     // this block is called repeatedly for each update to the pending transaction, including all 10 confirmations
                     // the promise either shouldn't be used (and rely on events instead) or it can be resolved once the transaction is submitted to the network or mined
                     if (tx.isSubmitSuccess()) { // alternatively use it.isMined() but be careful about making a promise that never resolves!
-                        promise.resolve(true)
+                        val map = Arguments.createMap()
+                        map.putString("txId", tx.rawTransactionId?.toHexReversed())
+                        map.putString("raw", tx.raw?.toHexReversed())
+                        promise.resolve(map)
                     } else if (tx.isFailure()) {
+                        val map = Arguments.createMap()
+                        map.putInt("expiryHeight", tx.expiryHeight)
+                        map.putString("cancelled", tx.cancelled.toString())
+                        map.putString("encodeAttempts", tx.encodeAttempts.toString())
+                        map.putString("submitAttempts", tx.submitAttempts.toString())
+                        if (tx.errorMessage != null) map.putString("errorMessage", tx.errorMessage)
+                        if (tx.errorCode != null) map.putString("errorCode", tx.errorCode.toString())
                         promise.resolve(false)
                     }
                     sendEvent("PendingTransactionUpdated") { args ->
@@ -349,31 +359,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
      * Serialize a pending tranaction to a map as an event
      */
     private fun WritableMap.putPendingTransaction(tx: PendingTransaction) {
-        // TODO: we need to be really clear on what a non-error value is. For now, just use a placeholder
-        val noError = 0
-        // interface PendingTransaction
-        putInt("accountIndex", tx.accountIndex)
-        putInt("accountIndex", tx.accountIndex)
-        putInt("expiryHeight", tx.expiryHeight)
-        putBoolean("cancelled", tx.isCancelled())
-        putInt("submitAttempts", tx.submitAttempts)
-        putString("errorMessage", tx.errorMessage)
-        putInt("errorCode", tx.errorCode ?: noError)
-        putString("createTime", tx.createTime.toString())
-
-        // interface ZcashTransaction
-        putString("txId", tx.rawTransactionId?.toHexReversed())
-        putString("fee", ZcashSdk.MINERS_FEE_ZATOSHI.toString())
-        putString("zatoshi", tx.value.toString())
-        // TODO: use the extension properties for this once they exist
-        putBoolean("isInbound", false)
-        putBoolean("isOutbound", true) // pendingTransactions are, by definition, outbound
-        putString("toAddress", tx.toAddress)
-        putString("memo", tx.memo.toUtf8Memo())
-        putInt("minedHeight", tx.minedHeight)
-
-        // TODO: missing from API, like minedHeight, this could be set after it is mined and null otherwise
-//        putInt("blockTime", tx.blockTime)
+        sendEvent("PendingTransactionUpdated") { args ->
+            tx.let { info ->
+                if (tx.accountIndex != null ) putInt("accountIndex", tx.accountIndex)
+                if (tx.expiryHeight != null ) putInt("expiryHeight", tx.expiryHeight)
+                if (tx.submitAttempts != null ) putInt("submitAttempts", tx.submitAttempts)
+                if (tx.errorMessage != null ) putString("errorMessage", tx.errorMessage)
+                if (tx.createTime != null ) putString("PendingTransactionUpdated", tx.createTime.toString())
+            }
+        }
     }
 
     private fun sendEvent(eventName: String, putArgs: (WritableMap) -> Unit) {
