@@ -167,6 +167,10 @@ class Synchronizer {
     return result
   }
 
+  rescan(height: number): void {
+    RNZcash.rescan(this.alias, height)
+  }
+
   async sendToAddress(spendInfo: SpendInfo): Promise<PendingTransaction> {
     const result = await RNZcash.spendToAddress(
       this.alias,

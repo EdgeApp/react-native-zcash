@@ -121,6 +121,14 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun rescan(alias: String, height: Int, promise: Promise) {
+        val wallet = getWallet(alias)
+        moduleScope.launch {
+            wallet.synchronizer.rewindToNearestHeight(height)
+        }
+    }
+
+    @ReactMethod
     fun getBlockCount(
         promise: Promise
     ) = promise.wrap {
