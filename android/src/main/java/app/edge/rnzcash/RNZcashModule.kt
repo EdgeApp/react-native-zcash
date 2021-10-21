@@ -277,24 +277,24 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun isValidShieldedAddress(address: String, promise: Promise) {
         val wallet = getAnyWallet()
-        try {
-            moduleScope.launch {
-                promise.resolve(wallet.synchronizer.isValidShieldedAddr(address))
+        moduleScope.launch {
+            try {
+            promise.resolve(wallet.synchronizer.isValidShieldedAddr(address))
+            } catch (t: Throwable) {
+                promise.resolve(false)
             }
-        } catch (t: Throwable) {
-            promise.reject("Err", t)
         }
     }
 
     @ReactMethod
-    fun isValidTransparentAddress(alias: String, address: String, promise: Promise) {
+    fun isValidTransparentAddress(address: String, promise: Promise) {
         val wallet = getAnyWallet()
-        try {
-            moduleScope.launch {
-                promise.resolve(wallet.synchronizer.isValidTransparentAddr(address))
+        moduleScope.launch {
+            try {
+            promise.resolve(wallet.synchronizer.isValidTransparentAddr(address))
+            } catch (t: Throwable) {
+                promise.resolve(false)
             }
-        } catch (t: Throwable) {
-            promise.reject("Err", t)
         }
     }
 
