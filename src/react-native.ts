@@ -111,7 +111,6 @@ class Synchronizer {
   }
 
   async initialize(initializerConfig: InitializerConfig): Promise<void> {
-    console.log(initializerConfig)
     await RNZcash.initialize(
       initializerConfig.fullViewingKey.extfvk,
       initializerConfig.fullViewingKey.extpub,
@@ -192,26 +191,29 @@ class Synchronizer {
 
   // Events
 
-  subscribe(callbacks: SynchronizerCallbacks): void {
-    this.setListener('BalanceEvent', arg => {
-      if (arg.alias === this.alias) callbacks.onShieldedBalanceChanged(arg)
-    })
-    this.setListener('StatusEvent', arg => {
-      if (arg.alias === this.alias) callbacks.onStatusChanged(arg)
-    })
-    this.setListener('TransactionEvent', arg => {
-      if (arg.alias === this.alias) callbacks.onTransactionsChanged(arg)
-    })
-    this.setListener('UpdateEvent', arg => {
-      if (arg.alias === this.alias) callbacks.onUpdate(arg)
-    })
-    this.setListener('PendingTransactionUpdated', arg => {
-      if (arg.alias === this.alias) callbacks.onPendingTransactionUpdated(arg)
-    })
+  subscribe({
+    onShieldedBalanceChanged,
+    onStatusChanged,
+    onTransactionsChanged,
+    onUpdate,
+    onPendingTransactionUpdated
+  }: SynchronizerCallbacks): void {
+    this.setListener('BalanceEvent', onShieldedBalanceChanged)
+    this.setListener('StatusEvent', onStatusChanged)
+    this.setListener('TransactionEvent', onTransactionsChanged)
+    this.setListener('UpdateEvent', onUpdate)
+    this.setListener('PendingTransactionUpdated', onPendingTransactionUpdated)
   }
 
-  private setListener(eventName: string, callback: Callback): void {
-    this.subscriptions.push(this.eventEmitter.addListener(eventName, callback))
+  private setListener<T>(
+    eventName: string,
+    callback: Callback = (t: any) => null
+  ): void {
+    this.subscriptions.push(
+      this.eventEmitter.addListener(eventName, arg =>
+        arg.alias === this.alias ? callback(arg) : null
+      )
+    )
   }
 
   unsubscribe(): void {

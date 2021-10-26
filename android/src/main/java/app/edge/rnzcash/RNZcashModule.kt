@@ -73,44 +73,39 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         if (!wallet.isStarted) {
             wallet.synchronizer.prepare()
             wallet.synchronizer.start(moduleScope)
-            wallet.synchronizer.coroutineScope.let { scope ->
-                wallet.synchronizer.processorInfo.collectWith(scope, { update ->
-                    sendEvent("UpdateEvent") { args ->
-                        update.let { info ->
-                            args.putString("alias", alias)
-                            args.putBoolean("isDownloading", info.isDownloading)
-                            args.putBoolean("isScanning", info.isScanning)
-                            args.putInt("lastDownloadedHeight", info.lastDownloadedHeight)
-                            args.putInt("lastScannedHeight", info.lastScannedHeight)
-                            args.putInt("scanProgress", info.scanProgress)
-                            args.putInt("networkBlockHeight", info.networkBlockHeight)
-                        }
-                    }
-                })
-                wallet.synchronizer.status.collectWith(scope, { status -> 
-                    sendEvent("StatusEvent") { args ->
-                        args.putString("alias", alias)
-                        args.putString("name", status.toString())
-                    }
+            val scope = wallet.synchronizer.coroutineScope
+            wallet.synchronizer.processorInfo.collectWith(scope, { update ->
+                sendEvent("UpdateEvent") { args ->
+                    args.putString("alias", alias)
+                    args.putBoolean("isDownloading", update.isDownloading)
+                    args.putBoolean("isScanning", update.isScanning)
+                    args.putInt("lastDownloadedHeight", update.lastDownloadedHeight)
+                    args.putInt("lastScannedHeight", update.lastScannedHeight)
+                    args.putInt("scanProgress", update.scanProgress)
+                    args.putInt("networkBlockHeight", update.networkBlockHeight)
                 }
-                )
-                wallet.synchronizer.saplingBalances.collectWith(scope, { walletBalance ->
-                    sendEvent("BalanceEvent") { args ->
-                        args.putString("alias", alias)
-                        args.putString("availableZatoshi", walletBalance.availableZatoshi.toString())
-                        args.putString("totalZatoshi", walletBalance.totalZatoshi.toString())
-                    }
-                })
-                // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
-                wallet.synchronizer.clearedTransactions.distinctUntilChanged()
-                    .collectWith(scope, { txList ->
-                        sendEvent("TransactionEvent") { args ->
-                            args.putString("alias", alias)
-                            args.putBoolean("hasChanged", true)
-                            args.putInt("transactionCount", txList.count())
-                        }
-                    })
-            }
+            })
+            wallet.synchronizer.status.collectWith(scope, { status -> 
+                sendEvent("StatusEvent") { args ->
+                    args.putString("alias", alias)
+                    args.putString("name", status.toString())
+                }
+            })
+            wallet.synchronizer.saplingBalances.collectWith(scope, { walletBalance ->
+                sendEvent("BalanceEvent") { args ->
+                    args.putString("alias", alias)
+                    args.putString("availableZatoshi", walletBalance.availableZatoshi.toString())
+                    args.putString("totalZatoshi", walletBalance.totalZatoshi.toString())
+                }
+            })
+            // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
+            wallet.synchronizer.clearedTransactions.distinctUntilChanged().collectWith(scope, { txList ->
+                sendEvent("TransactionEvent") { args ->
+                    args.putString("alias", alias)
+                    args.putBoolean("hasChanged", true)
+                    args.putInt("transactionCount", txList.count())
+                }
+            })
             wallet.repository.prepare()
             wallet.isStarted = true
         }
@@ -129,21 +124,23 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun getTransactions(alias: String, first: Int, last: Int, promise: Promise) {
         val wallet = getWallet(alias)
         moduleScope.launch {
-            val result = wallet.repository.findNewTransactions(first..last)
-            val nativeArray = Arguments.createArray()
+            promise.wrap {
+                val result = wallet.repository.findNewTransactions(first..last)
+                val nativeArray = Arguments.createArray()
 
-            for (i in 0..result.size - 1) {
-                val map = Arguments.createMap()
-                map.putString("value", result[i].value.toString())
-                map.putInt("minedHeight", result[i].minedHeight)
-                map.putInt("blockTimeInSeconds", result[i].blockTimeInSeconds.toInt())
-                map.putString("rawTransactionId", result[i].rawTransactionId.toHexReversed())
-                if (result[i].memo != null) map.putString("memo", result[i].memo?.decodeToString()?.trim('\u0000', '\uFFFD'))
-                if (result[i].toAddress != null) map.putString("toAddress", result[i].toAddress)
-                nativeArray.pushMap(map)
+                for (i in 0..result.size - 1) {
+                    val map = Arguments.createMap()
+                    map.putString("value", result[i].value.toString())
+                    map.putInt("minedHeight", result[i].minedHeight)
+                    map.putInt("blockTimeInSeconds", result[i].blockTimeInSeconds.toInt())
+                    map.putString("rawTransactionId", result[i].rawTransactionId.toHexReversed())
+                    if (result[i].memo != null) map.putString("memo", result[i].memo?.decodeToString()?.trim('\u0000', '\uFFFD'))
+                    if (result[i].toAddress != null) map.putString("toAddress", result[i].toAddress)
+                    nativeArray.pushMap(map)
+                }
+
+                nativeArray
             }
-
-            promise.resolve(nativeArray)
         }
     }
 
@@ -205,12 +202,12 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getShieldedBalance(alias: String, promise: Promise) {
+    fun getShieldedBalance(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
         val map = Arguments.createMap()
         map.putString("totalZatoshi", wallet.synchronizer.saplingBalances.value.totalZatoshi.toString(10))
         map.putString("availableZatoshi", wallet.synchronizer.saplingBalances.value.availableZatoshi.toString(10))
-        promise.resolve(map)
+        map
     }
 
     @ReactMethod
@@ -224,8 +221,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         promise: Promise
     ) {
         val wallet = getWallet(alias)
-        try {
-            wallet.synchronizer.coroutineScope.launch {
+        wallet.synchronizer.coroutineScope.launch {
+            try {
                 wallet.synchronizer.sendToAddress(
                     spendingKey,
                     zatoshi.toLong(),
@@ -254,10 +251,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                         args.putPendingTransaction(tx)
                     }
                 }
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
             }
-        } catch (t: Throwable) {
-            promise.reject("Err", t)
         }
+        
     }
 
     //
@@ -276,25 +274,21 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun isValidShieldedAddress(address: String, promise: Promise) {
-        val wallet = getAnyWallet()
         moduleScope.launch {
-            try {
-            promise.resolve(wallet.synchronizer.isValidShieldedAddr(address))
-            } catch (t: Throwable) {
-                promise.resolve(false)
+            promise.wrap {
+                val wallet = getAnyWallet()
+                wallet.synchronizer.isValidShieldedAddr(address)
             }
         }
     }
 
     @ReactMethod
-    fun isValidTransparentAddress(address: String, promise: Promise) {
-        val wallet = getAnyWallet()
+    fun isValidTransparentAddress(address: String, promise: Promise) {    
         moduleScope.launch {
-            try {
-            promise.resolve(wallet.synchronizer.isValidTransparentAddr(address))
-            } catch (t: Throwable) {
-                promise.resolve(false)
-            }
+            promise.wrap {
+                val wallet = getAnyWallet()
+                wallet.synchronizer.isValidTransparentAddr(address)
+            } 
         }
     }
 
@@ -315,15 +309,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     //
 
     @ReactMethod
-    fun readyToSend(alias: String, promise: Promise) {
+    fun readyToSend(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
-        try {
-            // for testing purposes, one is enough--we just want to make sure we're not downloading
-            wallet.synchronizer.status.filter { it == SYNCED }.onFirstWith(wallet.synchronizer.coroutineScope) {
-                promise.resolve(true)
-            }
-        } catch (t: Throwable) {
-            promise.reject("Err", t)
+        // for testing purposes, one is enough--we just want to make sure we're not downloading
+        wallet.synchronizer.status.filter { it == SYNCED }.onFirstWith(wallet.synchronizer.coroutineScope) {
+            true
         }
     }
 
@@ -378,12 +368,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun sendEvent(eventName: String, putArgs: (WritableMap) -> Unit) {
-        Arguments.createMap().let { args ->
-            putArgs(args)
-            reactApplicationContext
-                .getJSModule(RCTDeviceEventEmitter::class.java)
-                .emit(eventName, args)
-        }
+        val args = Arguments.createMap()
+        putArgs(args)
+        reactApplicationContext
+            .getJSModule(RCTDeviceEventEmitter::class.java)
+            .emit(eventName, args)
     }
 
     // TODO: move this to the SDK
