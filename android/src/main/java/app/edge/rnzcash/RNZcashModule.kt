@@ -159,8 +159,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun deriveViewingKey(seedBytesHex: String, promise: Promise) {
-        var keys = DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), ZcashNetwork.Mainnet)[0]
+    fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
+        var keys = DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0]
         val map = Arguments.createMap()
         map.putString("extfvk", keys.extfvk)
         map.putString("extpub", keys.extpub)
@@ -168,8 +168,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun deriveSpendingKey(seedBytesHex: String, promise: Promise) = promise.wrap {
-        DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), ZcashNetwork.Mainnet)[0]
+    fun deriveSpendingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) = promise.wrap {
+        DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0]
     }
 
     //
@@ -263,13 +263,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     //
 
     @ReactMethod
-    fun deriveShieldedAddress(viewingKey: String, promise: Promise) = promise.wrap {
-        DerivationTool.deriveShieldedAddress(viewingKey, ZcashNetwork.Mainnet)
+    fun deriveShieldedAddress(viewingKey: String, network: String = "mainnet", promise: Promise) = promise.wrap {
+        DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet))
     }
 
     @ReactMethod
-    fun deriveTransparentAddress(seed: String, network: ZcashNetwork = ZcashNetwork.Mainnet, promise: Promise) = promise.wrap {
-        DerivationTool.deriveTransparentAddress(seed.fromHex(), network)
+    fun deriveTransparentAddress(seed: String, network: String = "mainnet", promise: Promise) = promise.wrap {
+        DerivationTool.deriveTransparentAddress(seed.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))
     }
 
     @ReactMethod

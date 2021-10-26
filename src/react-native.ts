@@ -8,6 +8,7 @@ import {
   BlockRange,
   ConfirmedTransaction,
   InitializerConfig,
+  Network,
   PendingTransaction,
   SpendInfo,
   SynchronizerCallbacks,
@@ -25,24 +26,34 @@ type Callback = (...args: any[]) => any
 
 export const KeyTool = {
   deriveViewingKey: async (
-    seedBytesHex: string
+    seedBytesHex: string,
+    network: Network
   ): Promise<UnifiedViewingKey> => {
-    const result = await RNZcash.deriveViewingKey(seedBytesHex)
+    const result = await RNZcash.deriveViewingKey(seedBytesHex, network)
     return result
   },
-  deriveSpendingKey: async (seedBytesHex: string): Promise<string> => {
-    const result = await RNZcash.deriveSpendingKey(seedBytesHex)
+  deriveSpendingKey: async (
+    seedBytesHex: string,
+    network: Network
+  ): Promise<string> => {
+    const result = await RNZcash.deriveSpendingKey(seedBytesHex, network)
     return result
   }
 }
 
 export const AddressTool = {
-  deriveShieldedAddress: async (viewingKey: string): Promise<string> => {
-    const result = await RNZcash.deriveShieldedAddress(viewingKey)
+  deriveShieldedAddress: async (
+    viewingKey: string,
+    network: Network
+  ): Promise<string> => {
+    const result = await RNZcash.deriveShieldedAddress(viewingKey, network)
     return result
   },
-  deriveTransparentAddress: async (seedHex: string): Promise<string> => {
-    const result = await RNZcash.deriveTransparentAddress(seedHex)
+  deriveTransparentAddress: async (
+    seedHex: string,
+    network: Network
+  ): Promise<string> => {
+    const result = await RNZcash.deriveTransparentAddress(seedHex, network)
     return result
   },
   isValidShieldedAddress: async (address: string): Promise<boolean> => {
@@ -59,11 +70,13 @@ class Synchronizer {
   eventEmitter: NativeEventEmitter
   subscriptions: EventSubscription[]
   alias: string
+  network: Network
 
-  constructor(alias: string) {
+  constructor(alias: string, network: Network) {
     this.eventEmitter = new NativeEventEmitter(RNZcash)
     this.subscriptions = []
     this.alias = alias
+    this.network = network
   }
 
   /// ////////////////////////////////////////////////////////////////
@@ -226,7 +239,10 @@ class Synchronizer {
 export const makeSynchronizer = async (
   initializerConfig: InitializerConfig
 ): Promise<Synchronizer> => {
-  const synchronizer = new Synchronizer(initializerConfig.alias)
+  const synchronizer = new Synchronizer(
+    initializerConfig.alias,
+    initializerConfig.networkName
+  )
   await synchronizer.initialize(initializerConfig)
   return synchronizer
 }

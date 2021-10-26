@@ -1,10 +1,12 @@
+export type Network = 'mainnet' | 'testnet'
+
 export interface WalletBalance {
   availableZatoshi: string
   totalZatoshi: string
 }
 
 export interface InitializerConfig {
-  networkName: string
+  networkName: Network
   defaultHost: string
   defaultPort: number
   fullViewingKey: UnifiedViewingKey
