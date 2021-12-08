@@ -1,45 +1,23 @@
-// Formatted using clang-format with default settings.
+#import <React/RCTBridgeModule.h>
 
-#import "RNZcash.h"
+@interface RCT_EXTERN_MODULE(RNZcash, NSObject)
 
-@implementation RNZcash
+RCT_EXTERN_METHOD(deriveViewingKey:(NSString *)seed
+:(NSString *)network
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
 
-RCT_EXPORT_MODULE()
+RCT_EXTERN_METHOD(deriveSpendingKey:(NSString *)seed
+:(NSString *)network
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
 
-// - (id)init {
-//   self = [super init];
-//   return self;
-// }
-
-+ (BOOL)requiresMainQueueSetup {
-  return NO;
-}
-
-RCT_REMAP_METHOD(getNumTransactions, getNumTransactions:(float) N
-                 resolver:(RCTPromiseResolveBlock)resolve
-                 rejecter:(RCTPromiseRejectBlock)reject)
-{
-//     NSUInteger const onehundred = 100;
-//     NSNumber *val = [NSNumber numberWithInteger:(N+42)];
-    NSNumber *myNum = [NSNumber numberWithFloat:(N+123)];
-    resolve(myNum);
-}
-
-RCT_REMAP_METHOD(deriveViewKey, deriveViewKey:(NSString *) seedBytesHex
-                 resolver:(RCTPromiseResolveBlock)resolve
-                 rejecter:(RCTPromiseRejectBlock)reject)
-{
-NSString *out = [seedBytesHex stringByAppendingString:@"-viewKey"];
-    resolve(out);
-}
-
-
-RCT_REMAP_METHOD(getShieldedBalance,
-                 resolver:(RCTPromiseResolveBlock)resolve
-                 rejecter:(RCTPromiseRejectBlock)reject)
-{
-NSDictionary *dict = @{@"availableBalance":@"123",@"totalBalance": @"1234"};
-    resolve(dict);
-}
+RCT_EXTERN_METHOD(deriveShieldedAddress:(NSString *)viewingKey
+:(NSString *)network
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
 
 @end
