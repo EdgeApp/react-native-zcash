@@ -56,12 +56,18 @@ export const AddressTool = {
     const result = await RNZcash.deriveTransparentAddress(seedHex, network)
     return result
   },
-  isValidShieldedAddress: async (address: string): Promise<boolean> => {
-    const result = await RNZcash.isValidShieldedAddress(address)
+  isValidShieldedAddress: async (
+    address: string,
+    network: Network = 'mainnet'
+  ): Promise<boolean> => {
+    const result = await RNZcash.isValidShieldedAddress(address, network)
     return result
   },
-  isValidTransparentAddress: async (address: string): Promise<boolean> => {
-    const result = await RNZcash.isValidTransparentAddress(address)
+  isValidTransparentAddress: async (
+    address: string,
+    network: Network = 'mainnet'
+  ): Promise<boolean> => {
+    const result = await RNZcash.isValidTransparentAddress(address, network)
     return result
   }
 }

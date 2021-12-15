@@ -104,6 +104,22 @@ class RNZcash : RCTEventEmitter {
         }
     }
 
+    @objc func isValidShieldedAddress(_ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+        if let bool = try? DerivationTools[network]?.isValidShieldedAddress(address) {
+            resolve(bool);
+        } else {
+            resolve(false)
+        }
+    }
+
+    @objc func isValidTransparentAddress(_ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+        if let bool = try? DerivationTools[network]?.isValidTransparentAddress(address) {
+            resolve(bool);
+        } else {
+            resolve(false)
+        }
+    }
+
     // Events
     public func sendToJs(name: String, data: Any) {
         self.sendEvent(withName:name, body:data)

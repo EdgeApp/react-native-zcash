@@ -273,22 +273,36 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun isValidShieldedAddress(address: String, promise: Promise) {
+    fun isValidShieldedAddress(address: String, network: String, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
-                val wallet = getAnyWallet()
-                wallet.synchronizer.isValidShieldedAddr(address)
+                var isValid = false
+                val wallets = synchronizerMap.asIterable()
+            for (wallet in wallets) {
+                if (wallet.value.synchronizer.network.networkName == network) {
+                  isValid = wallet.value.synchronizer.isValidShieldedAddr(address)
+                  break
+                }
+              }
+              isValid
             }
         }
     }
 
     @ReactMethod
-    fun isValidTransparentAddress(address: String, promise: Promise) {    
+    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {    
         moduleScope.launch {
             promise.wrap {
-                val wallet = getAnyWallet()
-                wallet.synchronizer.isValidTransparentAddr(address)
-            } 
+              var isValid = false
+              val wallets = synchronizerMap.asIterable()
+              for (wallet in wallets) {
+                if (wallet.value.synchronizer.network.networkName == network) {
+                  isValid = wallet.value.synchronizer.isValidTransparentAddr(address)
+                  break
+                }
+              }
+              isValid
+            }
         }
     }
 
@@ -331,15 +345,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         return wallet
     }
     
-    
-    /**
-     * Retrieve any wallet object for tasks that need simple synchronizer 
-     * functions like address validation
-     */
-    private fun getAnyWallet(): WalletSynchronizer {
-        val wallet = synchronizerMap.firstNotNullOf { it.takeIf { it != null } }
-        return wallet.value
-    }
 
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.

@@ -45,6 +45,18 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
+RCT_EXTERN_METHOD(isValidTransparentAddress:(NSString *)address
+:(NSString *)network
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
+
+RCT_EXTERN_METHOD(isValidShieldedAddress:(NSString *)address
+:(NSString *)network
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
+
 // Events
 RCT_EXTERN_METHOD(supportedEvents)
 
