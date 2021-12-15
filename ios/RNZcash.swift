@@ -4,7 +4,7 @@ import os
 
 let DerivationTools = ["mainnet": DerivationTool(networkType:ZcashNetworkBuilder.network(for: .mainnet).networkType), "testnet": DerivationTool(networkType:ZcashNetworkBuilder.network(for: .testnet).networkType)]
 let NetworkParams = ["mainnet": ZcashNetworkBuilder.network(for: .mainnet), "testnet": ZcashNetworkBuilder.network(for: .testnet)]
-var SynchronizerMap = [String: SDKSynchronizer]()
+var SynchronizerMap = [String: WalletSynchronizer]()
 var loggerProxy = RNZcashLogger(logLevel: .debug)
 
 struct ViewingKey: UnifiedViewingKey {
@@ -42,9 +42,9 @@ class RNZcash : NSObject {
         )
         if (SynchronizerMap[alias] == nil) {
             do {
-                let wallet = try SDKSynchronizer(initializer:initializer)
-                try wallet.initialize()
-                try wallet.prepare()
+                let wallet = try WalletSynchronizer(alias:alias, initializer:initializer)
+                try wallet.synchronizer.initialize()
+                try wallet.synchronizer.prepare()
                 SynchronizerMap[alias] = wallet
                 resolve(nil)
             } catch {
@@ -59,7 +59,7 @@ class RNZcash : NSObject {
     @objc func start(_ alias: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         if let wallet = SynchronizerMap[alias] {
             do {
-                try wallet.start()
+                try wallet.synchronizer.start()
             } catch {
                 reject("StartError", "Synchronizer failed to start", error)
             } 
@@ -71,7 +71,7 @@ class RNZcash : NSObject {
 
     @objc func stop(_ alias: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         if let wallet = SynchronizerMap[alias] {
-            wallet.stop()
+            wallet.synchronizer.stop()
             resolve(nil)
         } else {
             reject("StopError", "Wallet does not exist", genericError)
@@ -102,6 +102,15 @@ class RNZcash : NSObject {
         } else {
             reject("DeriveShieldedAddressError", "Failed to derive shielded address", genericError)
         }
+    }
+
+class WalletSynchronizer : NSObject {
+    public var alias: String
+    public var synchronizer: SDKSynchronizer
+
+    init(alias: String, initializer: Initializer, emitter:@escaping (String, Any) -> Void) throws {
+        self.alias = alias
+        self.synchronizer = try SDKSynchronizer(initializer:initializer)
     }
 }
 
