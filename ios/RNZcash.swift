@@ -16,11 +16,10 @@ struct ViewingKey: UnifiedViewingKey {
 let genericError = NSError(domain: "", code: 0)
 
 @objc(RNZcash)
-class RNZcash : NSObject {
+class RNZcash : RCTEventEmitter {
 
-
-    @objc static func requiresMainQueueSetup() -> Bool {
-        return false
+    override static func requiresMainQueueSetup() -> Bool {
+        return true
     }
 
     // Synchronizer
@@ -42,7 +41,7 @@ class RNZcash : NSObject {
         )
         if (SynchronizerMap[alias] == nil) {
             do {
-                let wallet = try WalletSynchronizer(alias:alias, initializer:initializer)
+                let wallet = try WalletSynchronizer(alias:alias, initializer:initializer, emitter:sendToJs)
                 try wallet.synchronizer.initialize()
                 try wallet.synchronizer.prepare()
                 SynchronizerMap[alias] = wallet
@@ -60,6 +59,7 @@ class RNZcash : NSObject {
         if let wallet = SynchronizerMap[alias] {
             do {
                 try wallet.synchronizer.start()
+                wallet.subscribe()
             } catch {
                 reject("StartError", "Synchronizer failed to start", error)
             } 
@@ -104,13 +104,68 @@ class RNZcash : NSObject {
         }
     }
 
+    // Events
+    public func sendToJs(name: String, data: Any) {
+        self.sendEvent(withName:name, body:data)
+    }
+
+    override func supportedEvents() -> [String]! {
+            return ["StatusEvent"]      // etc.
+        }
+}
+
+
 class WalletSynchronizer : NSObject {
     public var alias: String
     public var synchronizer: SDKSynchronizer
+    var status: String
+    var emit: (String, Any) -> Void
+    var fullySynced: Bool
 
     init(alias: String, initializer: Initializer, emitter:@escaping (String, Any) -> Void) throws {
         self.alias = alias
         self.synchronizer = try SDKSynchronizer(initializer:initializer)
+        self.status = "DISCONNECTED"
+        self.emit = emitter
+        self.fullySynced = false
+    }
+
+    public func subscribe() {
+        // Synchronizer Status
+        NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerDisconnected, object: self.synchronizer)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerStopped, object: self.synchronizer)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerSynced, object: self.synchronizer)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerDownloading, object: self.synchronizer)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerValidating, object: self.synchronizer)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerScanning, object: self.synchronizer)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerEnhancing, object: self.synchronizer)
+    }
+
+    @objc public func updateSyncStatus(notification: NSNotification) {
+        if !self.fullySynced {
+            switch notification.name.rawValue {
+            case "SDKSyncronizerStopped":
+                self.status = "STOPPED"
+            case "SDKSyncronizerDisconnected":
+                self.status = "DISCONNECTED"
+            case "SDKSyncronizerDownloading":
+                self.status = "DOWNLOADING"
+            case "SDKSyncronizerScanning":
+                if (self.processorState.scanProgress < 100) {
+                    self.status = "SCANNING"
+                } else {
+                    self.status = "SYNCED"
+                }
+            case "SDKSyncronizerSynced":
+                self.status = "SYNCED"
+                self.fullySynced = true
+            default:
+                break
+            }
+
+            let data: NSDictionary = ["alias": self.alias, "name":self.status]
+            emit("StatusEvent", data)
+        }
     }
 }
 

@@ -1,6 +1,8 @@
 #import <React/RCTBridgeModule.h>
+#import <React/RCTEventEmitter.h>
 
-@interface RCT_EXTERN_MODULE(RNZcash, NSObject)
+
+@interface RCT_EXTERN_MODULE(RNZcash, RCTEventEmitter<RCTBridgeModule>)
 
 // Synchronizer
 RCT_EXTERN_METHOD(initialize:(NSString *)extfvk
@@ -42,5 +44,8 @@ RCT_EXTERN_METHOD(deriveShieldedAddress:(NSString *)viewingKey
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
+
+// Events
+RCT_EXTERN_METHOD(supportedEvents)
 
 @end
