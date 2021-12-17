@@ -103,6 +103,21 @@ class RNZcash : RCTEventEmitter {
         }
     }
 
+    @objc func rescan(_ alias: String, _ height: Int, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+        if let wallet = SynchronizerMap[alias] {
+            do {
+                try wallet.synchronizer.rewind(.height(blockheight: height))
+                wallet.restart = true
+                wallet.fullySynced = false
+            } catch {
+                reject("RescanError", "Failed to rescan wallet", error)
+            } 
+            resolve(nil)
+        } else {
+            reject("RescanError", "Wallet does not exist", genericError)
+        }
+    }    
+
     // Derivation Tool
     @objc func deriveViewingKey(_ seed: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         if let viewingKeys: [UnifiedViewingKey] = try? DerivationTools[network]?.deriveUnifiedViewingKeysFromSeed(seed.hexaBytes, numberOfAccounts:1) {
@@ -162,6 +177,7 @@ class WalletSynchronizer : NSObject {
     var status: String
     var emit: (String, Any) -> Void
     var fullySynced: Bool
+    var restart: Bool
 
     init(alias: String, initializer: Initializer, emitter:@escaping (String, Any) -> Void) throws {
         self.alias = alias
@@ -169,6 +185,7 @@ class WalletSynchronizer : NSObject {
         self.status = "DISCONNECTED"
         self.emit = emitter
         self.fullySynced = false
+        self.restart = false
     }
 
     public func subscribe() {
@@ -187,6 +204,10 @@ class WalletSynchronizer : NSObject {
             switch notification.name.rawValue {
             case "SDKSyncronizerStopped":
                 self.status = "STOPPED"
+            if (self.restart == true) {
+                try! self.synchronizer.start()
+                self.restart = false
+            }
             case "SDKSyncronizerDisconnected":
                 self.status = "DISCONNECTED"
             case "SDKSyncronizerDownloading":
