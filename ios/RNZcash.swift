@@ -12,6 +12,20 @@ struct ViewingKey: UnifiedViewingKey {
     var extpub: ExtendedPublicKey
 }
 
+struct ShieldedBalance {
+    var availableZatoshi: String
+    var totalZatoshi: String
+    var dictionary: [String: Any] {
+        return [
+            "availableZatoshi": availableZatoshi,
+            "totalZatoshi": totalZatoshi
+        ]
+    }
+    var nsDictionary: NSDictionary {
+        return dictionary as NSDictionary
+    }
+}
+
 // Used when calling reject where there isn't an error object
 let genericError = NSError(domain: "", code: 0)
 
@@ -75,6 +89,17 @@ class RNZcash : RCTEventEmitter {
             resolve(nil)
         } else {
             reject("StopError", "Wallet does not exist", genericError)
+        }
+    }
+
+    @objc func getShieldedBalance(_ alias: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+        if let wallet = SynchronizerMap[alias] {
+            let total = String(describing: wallet.synchronizer.getShieldedBalance())
+            let available = String(describing: wallet.synchronizer.getShieldedVerifiedBalance())
+            let balance = ShieldedBalance(availableZatoshi:available, totalZatoshi:total)
+            resolve(balance.nsDictionary)
+        } else {
+            reject("GetShieldedBalanceError", "Wallet does not exist", genericError)
         }
     }
 
