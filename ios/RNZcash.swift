@@ -12,6 +12,28 @@ struct ViewingKey: UnifiedViewingKey {
     var extpub: ExtendedPublicKey
 }
 
+struct ConfirmedTx {
+    var minedHeight: Int
+    var toAddress: String?
+    var rawTransactionId: String
+    var blockTimeInSeconds: Int
+    var value: String
+    var memo: String?
+    var dictionary: [String: Any] {
+        return [
+            "minedHeight": minedHeight,
+            "toAddress": toAddress,
+            "rawTransactionId": rawTransactionId,
+            "blockTimeInSeconds": blockTimeInSeconds,
+            "value": value,
+            "memo": memo
+        ]
+    }
+    var nsDictionary: NSDictionary {
+        return dictionary as NSDictionary
+    }
+}
+
 struct ShieldedBalance {
     var availableZatoshi: String
     var totalZatoshi: String
@@ -89,6 +111,72 @@ class RNZcash : RCTEventEmitter {
             resolve(nil)
         } else {
             reject("StopError", "Wallet does not exist", genericError)
+        }
+    }
+
+    @objc func spendToAddress(_ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String, _ fromAccountIndex: Int, _ spendingKey: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+        if let wallet = SynchronizerMap[alias] {
+            let amount = Int64(zatoshi)
+            if amount == nil {
+                reject("SpendToAddressError", "Amount is invalid", genericError)
+                return
+            }
+            wallet.synchronizer.sendToAddress(
+                spendingKey:spendingKey,
+                zatoshi:amount!,
+                toAddress:toAddress,
+                memo: memo,
+                from:fromAccountIndex
+                ) { result in
+                    switch result {
+                    case .success(let pendingTransaction):
+                        if (pendingTransaction.rawTransactionId != nil && pendingTransaction.raw != nil) {
+                            let tx: NSDictionary = ["txId": pendingTransaction.rawTransactionId!.toHexStringTxId(), "raw":z_hexEncodedString(data:pendingTransaction.raw!)]
+                            resolve(tx)
+                        } else {
+                            reject("SpendToAddressError", "Missing txid or rawtx in success object", genericError)
+                        }
+                    case .failure(let error):
+                        reject("SpendToAddressError", "Failed to spend", error)
+                    }
+                }
+        } else {
+            reject("SpendToAddressError", "Wallet does not exist", genericError)
+        }
+    }
+
+    @objc func getTransactions(_ alias: String, _ first: Int, _ last: Int, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+        if let wallet = SynchronizerMap[alias] {
+            if !wallet.fullySynced {
+                reject("GetTransactionsError", "Wallet is not synced", genericError)
+                return
+            }
+            var out: [NSDictionary] = []
+            if let txs = try? wallet.synchronizer.allConfirmedTransactions(from:nil, limit:Int.max) {
+                // Get all txs, all the time, because the iOS SDK doesn't support querying by block height
+                for tx in txs {
+                    if (tx.rawTransactionId != nil) {
+                        var confTx = ConfirmedTx(
+                            minedHeight: tx.minedHeight,
+                            rawTransactionId: (tx.rawTransactionId?.toHexStringTxId())!,
+                            blockTimeInSeconds: Int(tx.blockTimeInSeconds),
+                            value: String(describing: tx.value)
+                        )
+                        if (tx.toAddress != nil) {
+                            confTx.toAddress = tx.toAddress
+                        }
+                        if (tx.memo != nil) {
+                            confTx.memo = String(bytes: tx.memo!, encoding: .utf8)
+                        }
+                        out.append(confTx.nsDictionary)
+                    }
+                }
+                resolve(out)
+            } else {
+                reject("GetTransactionsError", "Failed to query transactions", genericError)
+            }
+        } else {
+            reject("GetTransactionsError", "Wallet does not exist", genericError)
         }
     }
 
@@ -243,6 +331,19 @@ extension StringProtocol {
             return UInt8(self[startIndex..<endIndex], radix: 16)
         }
     }
+}
+
+func z_hexEncodedString(data: Data) -> String {
+    let hexDigits = Array("0123456789abcdef".utf16)
+    var chars: [unichar] = []
+
+    chars.reserveCapacity(2 * data.count)
+    for byte in data {
+        chars.append(hexDigits[Int(byte / 16)])
+        chars.append(hexDigits[Int(byte % 16)])
+    }
+
+    return String(utf16CodeUnits: chars, count: chars.count)
 }
 
 // Local file helper funcs
