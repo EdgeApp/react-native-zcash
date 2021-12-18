@@ -48,6 +48,28 @@ struct ShieldedBalance {
     }
 }
 
+struct ProcessorState {
+    var alias: String
+    var isDownloading: Bool
+    var isScanning: Bool
+    var lastDownloadedHeight: Int
+    var lastScannedHeight: Int
+    var scanProgress: Int
+    var networkBlockHeight: Int
+    var dictionary: [String: Any] {
+        return [
+            "alias": alias,
+            "lastDownloadedHeight": lastDownloadedHeight,
+            "lastScannedHeight": lastScannedHeight,
+            "scanProgress": scanProgress,
+            "networkBlockHeight": networkBlockHeight
+        ]
+    }
+    var nsDictionary: NSDictionary {
+        return dictionary as NSDictionary
+    }
+}
+
 // Used when calling reject where there isn't an error object
 let genericError = NSError(domain: "", code: 0)
 
@@ -253,9 +275,9 @@ class RNZcash : RCTEventEmitter {
         self.sendEvent(withName:name, body:data)
     }
 
-    override func supportedEvents() -> [String]! {
-            return ["StatusEvent"]      // etc.
-        }
+    override func supportedEvents() -> [String] {
+        return ["StatusEvent", "UpdateEvent"]
+    }
 }
 
 
@@ -266,6 +288,7 @@ class WalletSynchronizer : NSObject {
     var emit: (String, Any) -> Void
     var fullySynced: Bool
     var restart: Bool
+    var processorState: ProcessorState
 
     init(alias: String, initializer: Initializer, emitter:@escaping (String, Any) -> Void) throws {
         self.alias = alias
@@ -274,9 +297,18 @@ class WalletSynchronizer : NSObject {
         self.emit = emitter
         self.fullySynced = false
         self.restart = false
+        self.processorState = ProcessorState(
+            alias:self.alias,
+            lastDownloadedHeight:0,
+            lastScannedHeight:0,
+            scanProgress:0,
+            networkBlockHeight:0
+        )
     }
 
     public func subscribe() {
+        // Processor status
+        NotificationCenter.default.addObserver(self, selector: #selector(updateProcessorState(notification:)), name: .blockProcessorUpdated, object: self.synchronizer.blockProcessor)
         // Synchronizer Status
         NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerDisconnected, object: self.synchronizer)
         NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerStopped, object: self.synchronizer)
@@ -294,6 +326,7 @@ class WalletSynchronizer : NSObject {
                 self.status = "STOPPED"
             if (self.restart == true) {
                 try! self.synchronizer.start()
+                initializeProcessorState()
                 self.restart = false
             }
             case "SDKSyncronizerDisconnected":
@@ -316,6 +349,30 @@ class WalletSynchronizer : NSObject {
             let data: NSDictionary = ["alias": self.alias, "name":self.status]
             emit("StatusEvent", data)
         }
+    }
+    
+    @objc public func updateProcessorState(notification: NSNotification) {
+        let status: CompactBlockProgress = notification.userInfo![CompactBlockProcessorNotificationKey.progress] as! CompactBlockProgress
+        if case .download = status {
+            self.processorState.lastDownloadedHeight = status.progressHeight!
+        } else if case .scan = status {
+            self.processorState.lastScannedHeight = status.progressHeight!
+            self.processorState.scanProgress = Int(status.progress * 100)
+        } else {
+            return
+        }
+        self.processorState.networkBlockHeight = status.targetHeight!
+        emit("UpdateEvent", self.processorState.nsDictionary)
+    }
+
+    func initializeProcessorState() {
+        self.processorState = ProcessorState(
+            alias:self.alias,
+            lastDownloadedHeight:0,
+            lastScannedHeight:0,
+            scanProgress:0,
+            networkBlockHeight:0
+        )
     }
 }
 
