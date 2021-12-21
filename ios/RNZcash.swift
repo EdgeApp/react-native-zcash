@@ -50,8 +50,6 @@ struct ShieldedBalance {
 
 struct ProcessorState {
     var alias: String
-    var isDownloading: Bool
-    var isScanning: Bool
     var lastDownloadedHeight: Int
     var lastScannedHeight: Int
     var scanProgress: Int

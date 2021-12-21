@@ -210,18 +210,9 @@ class Synchronizer {
 
   // Events
 
-  subscribe({
-    onShieldedBalanceChanged,
-    onStatusChanged,
-    onTransactionsChanged,
-    onUpdate,
-    onPendingTransactionUpdated
-  }: SynchronizerCallbacks): void {
-    this.setListener('BalanceEvent', onShieldedBalanceChanged)
+  subscribe({ onStatusChanged, onUpdate }: SynchronizerCallbacks): void {
     this.setListener('StatusEvent', onStatusChanged)
-    this.setListener('TransactionEvent', onTransactionsChanged)
     this.setListener('UpdateEvent', onUpdate)
-    this.setListener('PendingTransactionUpdated', onPendingTransactionUpdated)
   }
 
   private setListener<T>(

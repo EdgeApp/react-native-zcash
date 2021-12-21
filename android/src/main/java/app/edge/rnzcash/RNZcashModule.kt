@@ -77,8 +77,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             wallet.synchronizer.processorInfo.collectWith(scope, { update ->
                 sendEvent("UpdateEvent") { args ->
                     args.putString("alias", alias)
-                    args.putBoolean("isDownloading", update.isDownloading)
-                    args.putBoolean("isScanning", update.isScanning)
                     args.putInt("lastDownloadedHeight", update.lastDownloadedHeight)
                     args.putInt("lastScannedHeight", update.lastScannedHeight)
                     args.putInt("scanProgress", update.scanProgress)
