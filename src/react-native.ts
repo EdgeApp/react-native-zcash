@@ -49,13 +49,6 @@ export const AddressTool = {
     const result = await RNZcash.deriveShieldedAddress(viewingKey, network)
     return result
   },
-  deriveTransparentAddress: async (
-    seedHex: string,
-    network: Network
-  ): Promise<string> => {
-    const result = await RNZcash.deriveTransparentAddress(seedHex, network)
-    return result
-  },
   isValidShieldedAddress: async (
     address: string,
     network: Network = 'mainnet'

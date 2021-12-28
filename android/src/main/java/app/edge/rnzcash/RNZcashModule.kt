@@ -266,11 +266,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun deriveTransparentAddress(seed: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        DerivationTool.deriveTransparentAddress(seed.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))
-    }
-
-    @ReactMethod
     fun isValidShieldedAddress(address: String, network: String, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
