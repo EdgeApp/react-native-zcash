@@ -151,12 +151,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getBlockCount(
-        promise: Promise
-    ) = promise.wrap {
-    }
-
-    @ReactMethod
     fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
         var keys = DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0]
         val map = Arguments.createMap()
@@ -179,24 +173,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun getLatestNetworkHeight(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
         wallet.synchronizer.latestHeight
-    }
-
-    @ReactMethod
-    fun getLatestScannedHeight(promise: Promise) = promise.wrap {
-        // TODO: implement this after switching to StateFlow objects
-        throw NotImplementedError()
-    }
-
-    @ReactMethod
-    fun getProgress(promise: Promise) = promise.wrap {
-        // TODO: implement this after switching to StateFlow objects
-        throw NotImplementedError()
-    }
-
-    @ReactMethod
-    fun getStatus(promise: Promise) = promise.wrap {
-        // TODO: implement this after switching to StateFlow objects
-        throw NotImplementedError()
     }
 
     @ReactMethod
@@ -244,9 +220,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                         if (tx.errorMessage != null) map.putString("errorMessage", tx.errorMessage)
                         if (tx.errorCode != null) map.putString("errorCode", tx.errorCode.toString())
                         promise.resolve(false)
-                    }
-                    sendEvent("PendingTransactionUpdated") { args ->
-                        args.putPendingTransaction(tx)
                     }
                 }
             } catch (t: Throwable) {
@@ -299,32 +272,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    override fun onCatalystInstanceDestroy() {
-        super.onCatalystInstanceDestroy()
-        try {
-            // cancelling the parent scope will also stop the synchronizer, through structured concurrency
-            // so calling synchronizer.stop() here is possible but redundant
-            moduleScope.cancel()
-        } catch (t: Throwable) {
-            // ignore
-        }
-    }
-
-
-    //
-    // Test functions (remove these, later)
-    //
-
-    @ReactMethod
-    fun readyToSend(alias: String, promise: Promise) = promise.wrap {
-        val wallet = getWallet(alias)
-        // for testing purposes, one is enough--we just want to make sure we're not downloading
-        wallet.synchronizer.status.filter { it == SYNCED }.onFirstWith(wallet.synchronizer.coroutineScope) {
-            true
-        }
-    }
-
-
     //
     // Utilities
     //
@@ -347,21 +294,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             resolve(block())
         } catch (t: Throwable) {
             reject("Err", t)
-        }
-    }
-
-    /**
-     * Serialize a pending tranaction to a map as an event
-     */
-    private fun WritableMap.putPendingTransaction(tx: PendingTransaction) {
-        sendEvent("PendingTransactionUpdated") { args ->
-            tx.let { info ->
-                if (tx.accountIndex != null ) putInt("accountIndex", tx.accountIndex)
-                if (tx.expiryHeight != null ) putInt("expiryHeight", tx.expiryHeight)
-                if (tx.submitAttempts != null ) putInt("submitAttempts", tx.submitAttempts)
-                if (tx.errorMessage != null ) putString("errorMessage", tx.errorMessage)
-                if (tx.createTime != null ) putString("PendingTransactionUpdated", tx.createTime.toString())
-            }
         }
     }
 
