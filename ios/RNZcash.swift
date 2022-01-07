@@ -2,7 +2,6 @@ import Foundation
 import ZcashLightClientKit
 import os
 
-let NetworkParams = ["mainnet": ZcashNetworkBuilder.network(for: .mainnet), "testnet": ZcashNetworkBuilder.network(for: .testnet)]
 var SynchronizerMap = [String: WalletSynchronizer]()
 var loggerProxy = RNZcashLogger(logLevel: .debug)
 
@@ -77,17 +76,26 @@ class RNZcash : RCTEventEmitter {
         return true
     }
 
+    private func getNetworkParams(_ network: String) -> ZcashNetwork {
+    switch network {
+        case "testnet":
+            return ZcashNetworkBuilder.network(for: .testnet)
+        default:
+            return ZcashNetworkBuilder.network(for: .mainnet)
+        }
+    }
+
     // Synchronizer
     @objc func initialize(_ extfvk: String, _ extpub: String, _ birthdayHeight: Int, _ alias: String, _ networkName: String, _ defaultHost: String, _ defaultPort: Int, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        let network = NetworkParams[networkName]
+        let network = getNetworkParams(networkName)
         let endpoint = LightWalletEndpoint(address: defaultHost, port: defaultPort, secure: true)
         let viewingKey = ViewingKey(extfvk: extfvk, extpub:extpub)
         let initializer = Initializer(
-            cacheDbURL: try! cacheDbURLHelper(alias, network!),
-            dataDbURL: try! dataDbURLHelper(alias, network!),
-            pendingDbURL: try! pendingDbURLHelper(alias, network!),
+            cacheDbURL: try! cacheDbURLHelper(alias, network),
+            dataDbURL: try! dataDbURLHelper(alias, network),
+            pendingDbURL: try! pendingDbURLHelper(alias, network),
             endpoint: endpoint,
-            network: network!,
+            network: network,
             spendParamsURL: try! spendParamsURLHelper(alias),
             outputParamsURL: try! outputParamsURLHelper(alias),
             viewingKeys: [viewingKey],
