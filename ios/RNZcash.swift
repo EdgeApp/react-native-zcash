@@ -2,7 +2,6 @@ import Foundation
 import ZcashLightClientKit
 import os
 
-let DerivationTools = ["mainnet": DerivationTool(networkType:ZcashNetworkBuilder.network(for: .mainnet).networkType), "testnet": DerivationTool(networkType:ZcashNetworkBuilder.network(for: .testnet).networkType)]
 let NetworkParams = ["mainnet": ZcashNetworkBuilder.network(for: .mainnet), "testnet": ZcashNetworkBuilder.network(for: .testnet)]
 var SynchronizerMap = [String: WalletSynchronizer]()
 var loggerProxy = RNZcashLogger(logLevel: .debug)
@@ -227,8 +226,18 @@ class RNZcash : RCTEventEmitter {
     }    
 
     // Derivation Tool
+    private func getDerivationToolForNetwork(_ network: String) -> DerivationTool {
+        switch network {
+        case "testnet":
+            return DerivationTool(networkType:ZcashNetworkBuilder.network(for: .testnet).networkType)
+        default:
+            return DerivationTool(networkType:ZcashNetworkBuilder.network(for: .mainnet).networkType)
+        }
+    }
+
     @objc func deriveViewingKey(_ seed: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        if let viewingKeys: [UnifiedViewingKey] = try? DerivationTools[network]?.deriveUnifiedViewingKeysFromSeed(seed.hexaBytes, numberOfAccounts:1) {
+        let derivationTool = getDerivationToolForNetwork(network)
+        if let viewingKeys: [UnifiedViewingKey] = try? derivationTool.deriveUnifiedViewingKeysFromSeed(seed.hexaBytes, numberOfAccounts:1) {
             let out = ["extfvk": viewingKeys[0].extfvk, "extpub": viewingKeys[0].extpub]
             resolve(out);
         } else {
@@ -237,7 +246,8 @@ class RNZcash : RCTEventEmitter {
     }
 
     @objc func deriveSpendingKey(_ seed: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        if let spendingKeys: [String] = try? DerivationTools[network]?.deriveSpendingKeys(seed:seed.hexaBytes, numberOfAccounts:1) {
+        let derivationTool = getDerivationToolForNetwork(network)
+        if let spendingKeys: [String] = try? derivationTool.deriveSpendingKeys(seed:seed.hexaBytes, numberOfAccounts:1) {
             resolve(spendingKeys[0]);
         } else {
             reject("DeriveSpendingKeyError", "Failed to derive spending key", genericError)
@@ -245,7 +255,8 @@ class RNZcash : RCTEventEmitter {
     }
 
     @objc func deriveShieldedAddress(_ viewingKey: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        if let address: String = try? DerivationTools[network]?.deriveShieldedAddress(viewingKey:viewingKey) {
+        let derivationTool = getDerivationToolForNetwork(network)
+        if let address: String = try? derivationTool.deriveShieldedAddress(viewingKey:viewingKey) {
             resolve(address);
         } else {
             reject("DeriveShieldedAddressError", "Failed to derive shielded address", genericError)
@@ -253,7 +264,8 @@ class RNZcash : RCTEventEmitter {
     }
 
     @objc func isValidShieldedAddress(_ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        if let bool = try? DerivationTools[network]?.isValidShieldedAddress(address) {
+        let derivationTool = getDerivationToolForNetwork(network)
+        if let bool = try? derivationTool.isValidShieldedAddress(address) {
             resolve(bool);
         } else {
             resolve(false)
@@ -261,7 +273,8 @@ class RNZcash : RCTEventEmitter {
     }
 
     @objc func isValidTransparentAddress(_ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        if let bool = try? DerivationTools[network]?.isValidTransparentAddress(address) {
+        let derivationTool = getDerivationToolForNetwork(network)
+        if let bool = try? derivationTool.isValidTransparentAddress(address) {
             resolve(bool);
         } else {
             resolve(false)
