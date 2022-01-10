@@ -73,8 +73,6 @@ export interface UnifiedViewingKey {
 }
 
 export interface UpdateEvent {
-  isDownloading: boolean
-  isScanning: boolean
   lastDownloadedHeight: number
   lastScannedHeight: number
   scanProgress: number // 0 - 100

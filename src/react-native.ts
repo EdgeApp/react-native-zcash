@@ -49,19 +49,18 @@ export const AddressTool = {
     const result = await RNZcash.deriveShieldedAddress(viewingKey, network)
     return result
   },
-  deriveTransparentAddress: async (
-    seedHex: string,
-    network: Network
-  ): Promise<string> => {
-    const result = await RNZcash.deriveTransparentAddress(seedHex, network)
+  isValidShieldedAddress: async (
+    address: string,
+    network: Network = 'mainnet'
+  ): Promise<boolean> => {
+    const result = await RNZcash.isValidShieldedAddress(address, network)
     return result
   },
-  isValidShieldedAddress: async (address: string): Promise<boolean> => {
-    const result = await RNZcash.isValidShieldedAddress(address)
-    return result
-  },
-  isValidTransparentAddress: async (address: string): Promise<boolean> => {
-    const result = await RNZcash.isValidTransparentAddress(address)
+  isValidTransparentAddress: async (
+    address: string,
+    network: Network = 'mainnet'
+  ): Promise<boolean> => {
+    const result = await RNZcash.isValidTransparentAddress(address, network)
     return result
   }
 }
@@ -204,18 +203,9 @@ class Synchronizer {
 
   // Events
 
-  subscribe({
-    onShieldedBalanceChanged,
-    onStatusChanged,
-    onTransactionsChanged,
-    onUpdate,
-    onPendingTransactionUpdated
-  }: SynchronizerCallbacks): void {
-    this.setListener('BalanceEvent', onShieldedBalanceChanged)
+  subscribe({ onStatusChanged, onUpdate }: SynchronizerCallbacks): void {
     this.setListener('StatusEvent', onStatusChanged)
-    this.setListener('TransactionEvent', onTransactionsChanged)
     this.setListener('UpdateEvent', onUpdate)
-    this.setListener('PendingTransactionUpdated', onPendingTransactionUpdated)
   }
 
   private setListener<T>(
