@@ -212,14 +212,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                         map.putString("raw", tx.raw?.toHexReversed())
                         promise.resolve(map)
                     } else if (tx.isFailure()) {
-                        val map = Arguments.createMap()
-                        map.putInt("expiryHeight", tx.expiryHeight)
-                        map.putString("cancelled", tx.cancelled.toString())
-                        map.putString("encodeAttempts", tx.encodeAttempts.toString())
-                        map.putString("submitAttempts", tx.submitAttempts.toString())
-                        if (tx.errorMessage != null) map.putString("errorMessage", tx.errorMessage)
-                        if (tx.errorCode != null) map.putString("errorCode", tx.errorCode.toString())
-                        promise.resolve(false)
+                        throw Exception(tx.errorMessage)
                     }
                 }
             } catch (t: Throwable) {
