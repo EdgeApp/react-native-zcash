@@ -26,4 +26,6 @@ Pod::Spec.new do |s|
 
  s.dependency "React" 
  s.dependency 'ZcashLightClientKit', '0.12.0-beta.5'
+ s.dependency "React"
+ s.dependency 'ZcashLightClientKit', '0.13.0-beta.2'
 end
