@@ -430,7 +430,7 @@ func documentsDirectoryHelper() throws -> URL {
 func cacheDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
     try documentsDirectoryHelper()
         .appendingPathComponent(
-            network.constants.DEFAULT_DB_NAME_PREFIX + alias + ZcashSDK.DEFAULT_CACHES_DB_NAME,
+            network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultCacheDbName,
             isDirectory: false
         )
 }
@@ -438,14 +438,14 @@ func cacheDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
 func dataDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
     try documentsDirectoryHelper()
         .appendingPathComponent(
-            network.constants.DEFAULT_DB_NAME_PREFIX + alias + ZcashSDK.DEFAULT_DATA_DB_NAME,
+            network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultDataDbName,
             isDirectory: false
         )
 }
 
 func pendingDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
     try documentsDirectoryHelper()
-        .appendingPathComponent(network.constants.DEFAULT_DB_NAME_PREFIX + alias + ZcashSDK.DEFAULT_PENDING_DB_NAME)
+        .appendingPathComponent(network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultPendingDbName)
 }
 
 func spendParamsURLHelper(_ alias: String) throws -> URL {
