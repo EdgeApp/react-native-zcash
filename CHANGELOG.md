@@ -1,5 +1,10 @@
 # React Native Zcash
 
+## 0.2.1 (2022-03-16)
+
+- Update the ZcashLightClientKit dependency
+- Remove unused build scripts
+
 ## 0.2.0 (2022-01-10)
 
 - Add iOS support
