@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
 
 class WalletSynchronizer constructor(val initializer: Initializer)  {
-    
+
     val synchronizer: SdkSynchronizer = Synchronizer(
         initializer
     ) as SdkSynchronizer
@@ -64,7 +64,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             }
             val wallet = getWallet(alias)
             wallet.synchronizer.hashCode().toString()
-            
+
         }
 
     @ReactMethod
@@ -83,7 +83,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     args.putInt("networkBlockHeight", update.networkBlockHeight)
                 }
             })
-            wallet.synchronizer.status.collectWith(scope, { status -> 
+            wallet.synchronizer.status.collectWith(scope, { status ->
                 sendEvent("StatusEvent") { args ->
                     args.putString("alias", alias)
                     args.putString("name", status.toString())
@@ -212,21 +212,14 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                         map.putString("raw", tx.raw?.toHexReversed())
                         promise.resolve(map)
                     } else if (tx.isFailure()) {
-                        val map = Arguments.createMap()
-                        map.putInt("expiryHeight", tx.expiryHeight)
-                        map.putString("cancelled", tx.cancelled.toString())
-                        map.putString("encodeAttempts", tx.encodeAttempts.toString())
-                        map.putString("submitAttempts", tx.submitAttempts.toString())
-                        if (tx.errorMessage != null) map.putString("errorMessage", tx.errorMessage)
-                        if (tx.errorCode != null) map.putString("errorCode", tx.errorCode.toString())
-                        promise.resolve(false)
+                        throw Exception(tx.errorMessage)
                     }
                 }
             } catch (t: Throwable) {
                 promise.reject("Err", t)
             }
         }
-        
+
     }
 
     //
@@ -256,7 +249,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {    
+    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
               var isValid = false
@@ -278,13 +271,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     /**
      * Retrieve wallet object from synchronizer map
-     */    
+     */
     private fun getWallet(alias: String): WalletSynchronizer {
         val wallet = synchronizerMap.get(alias)
         if (wallet == null) throw Exception("Wallet not found")
         return wallet
     }
-    
+
 
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
