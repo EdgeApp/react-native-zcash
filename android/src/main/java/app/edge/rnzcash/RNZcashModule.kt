@@ -1,11 +1,8 @@
 package app.edge.rnzcash;
 
-import androidx.paging.PagedList
 import cash.z.ecc.android.sdk.Initializer
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
-import cash.z.ecc.android.sdk.Synchronizer.Status.SYNCED
-import cash.z.ecc.android.sdk.block.CompactBlockProcessor
 import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.transaction.*
@@ -14,15 +11,13 @@ import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
 
 class WalletSynchronizer constructor(val initializer: Initializer)  {
-    
+
     val synchronizer: SdkSynchronizer = Synchronizer(
         initializer
     ) as SdkSynchronizer
@@ -64,7 +59,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             }
             val wallet = getWallet(alias)
             wallet.synchronizer.hashCode().toString()
-            
+
         }
 
     @ReactMethod
@@ -83,7 +78,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     args.putInt("networkBlockHeight", update.networkBlockHeight)
                 }
             })
-            wallet.synchronizer.status.collectWith(scope, { status -> 
+            wallet.synchronizer.status.collectWith(scope, { status ->
                 sendEvent("StatusEvent") { args ->
                     args.putString("alias", alias)
                     args.putString("name", status.toString())
@@ -226,7 +221,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 promise.reject("Err", t)
             }
         }
-        
+
     }
 
     //
@@ -256,7 +251,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {    
+    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
               var isValid = false
@@ -278,13 +273,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     /**
      * Retrieve wallet object from synchronizer map
-     */    
+     */
     private fun getWallet(alias: String): WalletSynchronizer {
         val wallet = synchronizerMap.get(alias)
         if (wallet == null) throw Exception("Wallet not found")
         return wallet
     }
-    
+
 
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
