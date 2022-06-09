@@ -135,6 +135,7 @@ class RNZcash : RCTEventEmitter {
     @objc func stop(_ alias: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         if let wallet = SynchronizerMap[alias] {
             wallet.synchronizer.stop()
+            SynchronizerMap[alias] = nil
             resolve(nil)
         } else {
             reject("StopError", "Wallet does not exist", genericError)
