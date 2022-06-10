@@ -328,7 +328,7 @@ class WalletSynchronizer : NSObject {
 
     public func subscribe() {
         // Processor status
-        NotificationCenter.default.addObserver(self, selector: #selector(updateProcessorState(notification:)), name: .blockProcessorUpdated, object: self.synchronizer.blockProcessor)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateProcessorState(notification:)), name: nil, object: self.synchronizer.blockProcessor)
         // Synchronizer Status
         NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerDisconnected, object: self.synchronizer)
         NotificationCenter.default.addObserver(self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerStopped, object: self.synchronizer)
@@ -372,17 +372,40 @@ class WalletSynchronizer : NSObject {
     }
     
     @objc public func updateProcessorState(notification: NSNotification) {
-        let status: CompactBlockProgress = notification.userInfo![CompactBlockProcessorNotificationKey.progress] as! CompactBlockProgress
-        if case .download = status {
-            self.processorState.lastDownloadedHeight = status.progressHeight!
-        } else if case .scan = status {
-            self.processorState.lastScannedHeight = status.progressHeight!
-            self.processorState.scanProgress = Int(status.progress * 100)
+        let prevLastDownloadedHeight = self.processorState.lastDownloadedHeight
+        let prevScanProgress = self.processorState.scanProgress
+        let prevLastScannedHeight = self.synchronizer.latestScannedHeight
+        let prevNetworkBlockHeight = self.processorState.lastScannedHeight
+
+        if !self.fullySynced {
+            switch self.synchronizer.status {
+            case .downloading(let status):
+                // The SDK emits all zero values just before emitting a SYNCED status so we need to ignore these
+                if status.targetHeight == 0 {
+                    return
+                }
+                self.processorState.lastDownloadedHeight = status.progressHeight
+                self.processorState.networkBlockHeight = status.targetHeight
+                break
+            case .scanning(let status):
+                self.processorState.scanProgress = Int(floor(status.progress * 100))
+                self.processorState.lastScannedHeight = status.progressHeight
+                self.processorState.networkBlockHeight = status.targetHeight
+            default:
+                return
+            }
         } else {
-            return
+            self.processorState.lastDownloadedHeight = self.synchronizer.latestScannedHeight
+            self.processorState.scanProgress = 100
+            self.processorState.lastScannedHeight = self.synchronizer.latestScannedHeight
+            self.processorState.networkBlockHeight = try! self.synchronizer.latestHeight()
         }
-        self.processorState.networkBlockHeight = status.targetHeight!
-        emit("UpdateEvent", self.processorState.nsDictionary)
+
+        if self.processorState.lastDownloadedHeight != prevLastDownloadedHeight || self.processorState.scanProgress != prevScanProgress ||
+            self.processorState.lastScannedHeight != prevLastScannedHeight ||
+            self.processorState.networkBlockHeight != prevNetworkBlockHeight {
+            emit("UpdateEvent", self.processorState.nsDictionary)
+        }
     }
 
     func initializeProcessorState() {
