@@ -1,32 +1,29 @@
 package app.edge.rnzcash;
 
-import androidx.paging.PagedList
 import cash.z.ecc.android.sdk.Initializer
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
-import cash.z.ecc.android.sdk.Synchronizer.Status.SYNCED
-import cash.z.ecc.android.sdk.block.CompactBlockProcessor
 import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
-import cash.z.ecc.android.sdk.transaction.*
+import cash.z.ecc.android.sdk.internal.transaction.PagedTransactionRepository
+import cash.z.ecc.android.sdk.internal.*
 import cash.z.ecc.android.sdk.type.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
 
 class WalletSynchronizer constructor(val initializer: Initializer)  {
-    
-    val synchronizer: SdkSynchronizer = Synchronizer(
+
+    val synchronizer: SdkSynchronizer = Synchronizer.newBlocking(
         initializer
     ) as SdkSynchronizer
-    val repository = PagedTransactionRepository(initializer.context, 10, initializer.rustBackend, initializer.birthday, initializer.viewingKeys)
+    val repository = runBlocking { PagedTransactionRepository.new(initializer.context, 10, initializer.rustBackend, initializer.birthday, initializer.viewingKeys) }
     var isStarted = false
 }
 
@@ -50,28 +47,32 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
         promise.wrap {
-            Twig.plant(TroubleshootingTwig())
-            var vk = UnifiedViewingKey(extfvk, extpub)
-            if (synchronizerMap[alias] == null) {
-                val initializer = Initializer(reactApplicationContext) { config ->
-                    config.importedWalletBirthday(birthdayHeight)
-                    config.setViewingKeys(vk)
-                    config.setNetwork(networks[networkName] ?: ZcashNetwork.Mainnet, defaultHost, defaultPort)
-                    config.alias = alias
-                }
-                synchronizerMap[alias] = WalletSynchronizer(initializer)
-                val wallet = getWallet(alias)
+          Twig.plant(TroubleshootingTwig())
+          var vk = UnifiedViewingKey(extfvk, extpub)
+          if (synchronizerMap[alias] == null) {
+            runBlocking {
+              Initializer.new(reactApplicationContext) {
+                it.importedWalletBirthday(birthdayHeight)
+                it.setViewingKeys(vk)
+                it.setNetwork(networks[networkName]
+                  ?: ZcashNetwork.Mainnet, defaultHost, defaultPort)
+                it.alias = alias
+              }
+            }.let { initializer ->
+              synchronizerMap[alias] = WalletSynchronizer(initializer)
             }
-            val wallet = getWallet(alias)
-            wallet.synchronizer.hashCode().toString()
-            
+          }
+          val wallet = getWallet(alias)
+          wallet.synchronizer.hashCode().toString()
         }
 
     @ReactMethod
     fun start(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
         if (!wallet.isStarted) {
-            wallet.synchronizer.prepare()
+            runBlocking {
+              wallet.synchronizer.prepare()
+            }
             wallet.synchronizer.start(moduleScope)
             val scope = wallet.synchronizer.coroutineScope
             wallet.synchronizer.processorInfo.collectWith(scope, { update ->
@@ -83,7 +84,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     args.putInt("networkBlockHeight", update.networkBlockHeight)
                 }
             })
-            wallet.synchronizer.status.collectWith(scope, { status -> 
+            wallet.synchronizer.status.collectWith(scope, { status ->
                 sendEvent("StatusEvent") { args ->
                     args.putString("alias", alias)
                     args.putString("name", status.toString())
@@ -104,7 +105,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     args.putInt("transactionCount", txList.count())
                 }
             })
-            wallet.repository.prepare()
             wallet.isStarted = true
         }
         "success"
@@ -152,7 +152,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
-        var keys = DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0]
+        var keys = runBlocking { DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
         val map = Arguments.createMap()
         map.putString("extfvk", keys.extfvk)
         map.putString("extpub", keys.extpub)
@@ -161,7 +161,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveSpendingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0]
+        runBlocking { DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
     }
 
     //
@@ -226,7 +226,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 promise.reject("Err", t)
             }
         }
-        
+
     }
 
     //
@@ -235,7 +235,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveShieldedAddress(viewingKey: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet))
+        runBlocking { DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
     }
 
     @ReactMethod
@@ -256,7 +256,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {    
+    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
               var isValid = false
@@ -278,13 +278,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     /**
      * Retrieve wallet object from synchronizer map
-     */    
+     */
     private fun getWallet(alias: String): WalletSynchronizer {
         val wallet = synchronizerMap.get(alias)
         if (wallet == null) throw Exception("Wallet not found")
         return wallet
     }
-    
+
 
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
@@ -313,5 +313,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         } catch (t: Throwable) {
             "Unable to parse memo."
         }
+    }
+
+    inline fun ByteArray.toHexReversed(): String {
+      val sb = StringBuilder(size * 2)
+      var i = size - 1
+      while (i >= 0)
+        sb.append(String.format("%02x", this[i--]))
+      return sb.toString()
     }
 }

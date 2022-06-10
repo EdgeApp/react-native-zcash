@@ -28,7 +28,6 @@
     "lib",
     "package.json",
     "README.md",
-    "Scripts",
     "src"
   ],
   "main": "lib/rnzcash.rn.js",
