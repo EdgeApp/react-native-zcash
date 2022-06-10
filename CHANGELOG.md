@@ -1,5 +1,13 @@
 # React Native Zcash
 
+## 0.2.2 (2022-06-10)
+
+- Upgrade SDKs to NU5 compatible versions
+  - Android: Upgrade zcash-android-sdk to v1.5.0-beta01
+  - iOS: Upgrade ZcashLightClientKit to v0.14.0-beta
+- iOS: Fix memory leak after stopping synchronizer
+- ANdroid: White space and import cleanups
+
 ## 0.2.1 (2022-03-16)
 
 - Update the ZcashLightClientKit dependency
