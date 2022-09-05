@@ -17,6 +17,6 @@ Pod::Spec.new do |s|
   s.source_files = "ios/**/*.{h,m,swift}"
 
  s.dependency "React"
- s.dependency 'ZcashLightClientKit', '0.14.0-beta'
+ s.dependency 'PirateLightClientKit', '0.14.0-beta'
 
 end

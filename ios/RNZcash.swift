@@ -1,5 +1,5 @@
 import Foundation
-import ZcashLightClientKit
+import PirateLightClientKit
 import os
 
 var SynchronizerMap = [String: WalletSynchronizer]()
@@ -76,12 +76,12 @@ class RNZcash : RCTEventEmitter {
         return true
     }
 
-    private func getNetworkParams(_ network: String) -> ZcashNetwork {
+    private func getNetworkParams(_ network: String) -> PirateNetwork {
     switch network {
         case "testnet":
-            return ZcashNetworkBuilder.network(for: .testnet)
+            return PirateNetworkBuilder.network(for: .testnet)
         default:
-            return ZcashNetworkBuilder.network(for: .mainnet)
+            return PirateNetworkBuilder.network(for: .mainnet)
         }
     }
 
@@ -238,9 +238,9 @@ class RNZcash : RCTEventEmitter {
     private func getDerivationToolForNetwork(_ network: String) -> DerivationTool {
         switch network {
         case "testnet":
-            return DerivationTool(networkType:ZcashNetworkBuilder.network(for: .testnet).networkType)
+            return DerivationTool(networkType:PirateNetworkBuilder.network(for: .testnet).networkType)
         default:
-            return DerivationTool(networkType:ZcashNetworkBuilder.network(for: .mainnet).networkType)
+            return DerivationTool(networkType:PirateNetworkBuilder.network(for: .mainnet).networkType)
         }
     }
 
@@ -451,25 +451,25 @@ func documentsDirectoryHelper() throws -> URL {
     try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
 }
 
-func cacheDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
+func cacheDbURLHelper(_ alias: String, _ network: PirateNetwork) throws -> URL {
     try documentsDirectoryHelper()
         .appendingPathComponent(
-            network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultCacheDbName,
+            network.constants.defaultDbNamePrefix + alias + PirateSDK.defaultCacheDbName,
             isDirectory: false
         )
 }
 
-func dataDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
+func dataDbURLHelper(_ alias: String, _ network: PirateNetwork) throws -> URL {
     try documentsDirectoryHelper()
         .appendingPathComponent(
-            network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultDataDbName,
+            network.constants.defaultDbNamePrefix + alias + PirateSDK.defaultDataDbName,
             isDirectory: false
         )
 }
 
-func pendingDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
+func pendingDbURLHelper(_ alias: String, _ network: PirateNetwork) throws -> URL {
     try documentsDirectoryHelper()
-        .appendingPathComponent(network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultPendingDbName)
+        .appendingPathComponent(network.constants.defaultDbNamePrefix + alias + PirateSDK.defaultPendingDbName)
 }
 
 func spendParamsURLHelper(_ alias: String) throws -> URL {
@@ -482,7 +482,7 @@ func outputParamsURLHelper(_ alias: String) throws -> URL {
 
 
 // Logger
-class RNZcashLogger: ZcashLightClientKit.Logger {
+class RNZcashLogger: PirateLightClientKit.Logger {
     enum LogLevel: Int {
         case debug
         case error
