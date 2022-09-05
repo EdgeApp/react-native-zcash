@@ -1,18 +1,18 @@
 package app.edge.rnzcash;
 
-import cash.z.ecc.android.sdk.Initializer
-import cash.z.ecc.android.sdk.SdkSynchronizer
-import cash.z.ecc.android.sdk.Synchronizer
-import cash.z.ecc.android.sdk.db.entity.isSubmitSuccess
-import cash.z.ecc.android.sdk.db.entity.isFailure
-import cash.z.ecc.android.sdk.ext.collectWith
-import cash.z.ecc.android.sdk.ext.fromHex
-import cash.z.ecc.android.sdk.internal.transaction.PagedTransactionRepository
-import cash.z.ecc.android.sdk.internal.Twig
-import cash.z.ecc.android.sdk.internal.TroubleshootingTwig
-import cash.z.ecc.android.sdk.type.UnifiedViewingKey
-import cash.z.ecc.android.sdk.type.ZcashNetwork
-import cash.z.ecc.android.sdk.tool.DerivationTool
+import pirate.android.sdk.Initializer
+import pirate.android.sdk.SdkSynchronizer
+import pirate.android.sdk.Synchronizer
+import pirate.android.sdk.db.entity.isSubmitSuccess
+import pirate.android.sdk.db.entity.isFailure
+import pirate.android.sdk.ext.collectWith
+import pirate.android.sdk.ext.fromHex
+import pirate.android.sdk.internal.transaction.PagedTransactionRepository
+import pirate.android.sdk.internal.Twig
+import pirate.android.sdk.internal.TroubleshootingTwig
+import pirate.android.sdk.type.UnifiedViewingKey
+import pirate.android.sdk.type.PirateNetwork
+import pirate.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +44,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
     var synchronizerMap = mutableMapOf<String, WalletSynchronizer>()
 
-    val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
+    val networks = mapOf("piratemainnet" to PirateNetwork.Mainnet, "piratetestnet" to PirateNetwork.Testnet)
 
     override fun getName() = "RNZcash"
 
@@ -59,7 +59,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 it.importedWalletBirthday(birthdayHeight)
                 it.setViewingKeys(vk)
                 it.setNetwork(networks[networkName]
-                  ?: ZcashNetwork.Mainnet, defaultHost, defaultPort)
+                  ?: PirateNetwork.Mainnet, defaultHost, defaultPort)
                 it.alias = alias
               }
             }.let { initializer ->
@@ -156,7 +156,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
-        var keys = runBlocking { DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
+        var keys = runBlocking { DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, PirateNetwork.Mainnet))[0] }
         val map = Arguments.createMap()
         map.putString("extfvk", keys.extfvk)
         map.putString("extpub", keys.extpub)
@@ -165,7 +165,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveSpendingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        runBlocking { DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
+        runBlocking { DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, PirateNetwork.Mainnet))[0] }
     }
 
     //
@@ -239,7 +239,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveShieldedAddress(viewingKey: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        runBlocking { DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
+        runBlocking { DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, PirateNetwork.Mainnet)) }
     }
 
     @ReactMethod

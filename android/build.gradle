@@ -1,7 +1,7 @@
 buildscript {
     ext.versions = [
       'kotlin': '1.5.0',
-      'zcash': '1.5.0-beta01',
+      'piratechain': '1.5.0-beta02',
       'room': '2.3.0'
     ]
     repositories {
@@ -72,7 +72,7 @@ dependencies {
     implementation 'com.facebook.react:react-native:+'
 
     // Zcash
-    implementation  "cash.z.ecc.android:zcash-android-sdk:${versions.zcash}"
+    implementation  "io.github.piratenetwork:pirate-android-sdk:${versions.piratechain}"
 
     // Process Room annotations
     kapt "androidx.room:room-compiler:${versions.room}"
