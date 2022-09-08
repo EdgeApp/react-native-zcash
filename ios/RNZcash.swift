@@ -398,7 +398,11 @@ class WalletSynchronizer : NSObject {
             self.processorState.lastDownloadedHeight = self.synchronizer.latestScannedHeight
             self.processorState.scanProgress = 100
             self.processorState.lastScannedHeight = self.synchronizer.latestScannedHeight
-            self.processorState.networkBlockHeight = try! self.synchronizer.latestHeight()
+            do {
+                try self.processorState.networkBlockHeight = self.synchronizer.latestHeight()
+            } catch {
+                // ignore if synchronizer throws
+            }
         }
 
         if self.processorState.lastDownloadedHeight != prevLastDownloadedHeight || self.processorState.scanProgress != prevScanProgress ||
