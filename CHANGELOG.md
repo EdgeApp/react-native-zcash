@@ -1,5 +1,9 @@
 # React Native Zcash
 
+## 0.2.3 (2022-08-07)
+
+- iOS: Handle potential throw in synchronizer.latestHeight()
+
 ## 0.2.2 (2022-06-10)
 
 - Upgrade SDKs to NU5 compatible versions
