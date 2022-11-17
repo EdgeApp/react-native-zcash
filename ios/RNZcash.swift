@@ -5,10 +5,6 @@ import os
 var SynchronizerMap = [String: WalletSynchronizer]()
 var loggerProxy = RNZcashLogger(logLevel: .debug)
 
-struct ViewingKey: UnifiedViewingKey {
-    var extfvk: ExtendedFullViewingKey
-    var extpub: ExtendedPublicKey
-}
 
 struct ConfirmedTx {
     var minedHeight: Int
@@ -85,11 +81,15 @@ class RNZcash : RCTEventEmitter {
         }
     }
 
-    // Synchronizer
-    @objc func initialize(_ extfvk: String, _ extpub: String, _ birthdayHeight: Int, _ alias: String, _ networkName: String, _ defaultHost: String, _ defaultPort: Int, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+    /**
+     Synchronizer: initialize without access to seed phrase. It might fail because it's needed
+     */
+    @objc func initialize(ufvk: String, _ birthdayHeight: Int, _ alias: String, _ networkName: String, _ defaultHost: String, _ defaultPort: Int, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         let network = getNetworkParams(networkName)
         let endpoint = LightWalletEndpoint(address: defaultHost, port: defaultPort, secure: true)
-        let viewingKey = ViewingKey(extfvk: extfvk, extpub:extpub)
+
+        let ufvk = try! UnifiedFullViewingKey(encoding: ufvk, account: 0, network: network.networkType)
+
         let initializer = Initializer(
             cacheDbURL: try! cacheDbURLHelper(alias, network),
             dataDbURL: try! dataDbURLHelper(alias, network),
@@ -98,25 +98,74 @@ class RNZcash : RCTEventEmitter {
             network: network,
             spendParamsURL: try! spendParamsURLHelper(alias),
             outputParamsURL: try! outputParamsURLHelper(alias),
-            viewingKeys: [viewingKey],
+            viewingKeys: [ufvk],
             walletBirthday: birthdayHeight,
             loggerProxy: loggerProxy
         )
         if (SynchronizerMap[alias] == nil) {
             do {
                 let wallet = try WalletSynchronizer(alias:alias, initializer:initializer, emitter:sendToJs)
-                try wallet.synchronizer.initialize()
-                try wallet.synchronizer.prepare()
+                guard try wallet.synchronizer.prepare(with: nil) == .success else {
+
+                    reject("InitializeError", "Seed required to initialize", SynchronizerError.initFailed(message: "Seed required to initialize"))
+                    return 
+                }
+
+
                 SynchronizerMap[alias] = wallet
                 resolve(nil)
             } catch {
-                reject("InitializeError", "Synchronizer failed to initialize", error)
+
             }
         } else {
             // Wallet already initialized
             resolve(nil)
         }
     }
+
+    /**
+     Synchronizer: initialize without access to seed phrase. It might fail because it's needed
+     */
+    @objc func initialize(seed: String, _ birthdayHeight: Int, _ alias: String, _ networkName: String, _ defaultHost: String, _ defaultPort: Int, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+        let network = getNetworkParams(networkName)
+        let endpoint = LightWalletEndpoint(address: defaultHost, port: defaultPort, secure: true)
+
+        let spendingKey = try! DerivationTool(networkType: network.networkType).deriveUnifiedSpendingKey(seed: seed.hexaBytes, accountIndex: 0)
+
+        let ufvk = try! spendingKey.deriveFullViewingKey()
+
+        let initializer = Initializer(
+            cacheDbURL: try! cacheDbURLHelper(alias, network),
+            dataDbURL: try! dataDbURLHelper(alias, network),
+            pendingDbURL: try! pendingDbURLHelper(alias, network),
+            endpoint: endpoint,
+            network: network,
+            spendParamsURL: try! spendParamsURLHelper(alias),
+            outputParamsURL: try! outputParamsURLHelper(alias),
+            viewingKeys: [ufvk],
+            walletBirthday: birthdayHeight,
+            loggerProxy: loggerProxy
+        )
+        if (SynchronizerMap[alias] == nil) {
+            do {
+                let wallet = try WalletSynchronizer(alias:alias, initializer:initializer, emitter:sendToJs)
+                guard try wallet.synchronizer.prepare(with: seed.hexaBytes) == .success else {
+
+                    reject("InitializeError", "Seed required to initialize", SynchronizerError.initFailed(message: "Seed required to initialize"))
+                    return
+                }
+
+                SynchronizerMap[alias] = wallet
+                resolve(nil)
+            } catch {
+                reject("InitializeError", "failed to initialize synchronizer", error)
+            }
+        } else {
+            // Wallet already initialized
+            resolve(nil)
+        }
+    }
+
 
     @objc func start(_ alias: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         if let wallet = SynchronizerMap[alias] {
@@ -142,34 +191,49 @@ class RNZcash : RCTEventEmitter {
         }
     }
 
-    @objc func spendToAddress(_ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String, _ fromAccountIndex: Int, _ spendingKey: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
-        if let wallet = SynchronizerMap[alias] {
-            let amount = Int64(zatoshi)
-            if amount == nil {
+    @objc func spendToAddress(_ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String, _ fromAccountIndex: Int, _ seed: String, network: String , resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+        Task.detached {
+            guard let wallet = SynchronizerMap[alias] else {
+                reject("SpendToAddressError", "Wallet does not exist", genericError)
+                return
+            }
+
+            let network = self.getNetworkParams(network)
+
+            guard let spendingKey = try? DerivationTool(networkType: network.networkType).deriveUnifiedSpendingKey(seed: seed.hexaBytes, accountIndex: fromAccountIndex) else {
+                reject("SpendToAddressError", "Spending Key derivation error", genericError)
+                return
+            }
+
+            guard let recipient = try? Recipient(toAddress, network: network.networkType) else {
+                reject("SpendToAddressError", "Recipient is invalid", genericError)
+                return
+            }
+
+
+            guard let amount = Int64(zatoshi) else {
                 reject("SpendToAddressError", "Amount is invalid", genericError)
                 return
             }
-            wallet.synchronizer.sendToAddress(
-                spendingKey:spendingKey,
-                zatoshi:amount!,
-                toAddress:toAddress,
-                memo: memo,
-                from:fromAccountIndex
-                ) { result in
-                    switch result {
-                    case .success(let pendingTransaction):
-                        if (pendingTransaction.rawTransactionId != nil && pendingTransaction.raw != nil) {
-                            let tx: NSDictionary = ["txId": pendingTransaction.rawTransactionId!.toHexStringTxId(), "raw":z_hexEncodedString(data:pendingTransaction.raw!)]
-                            resolve(tx)
-                        } else {
-                            reject("SpendToAddressError", "Missing txid or rawtx in success object", genericError)
-                        }
-                    case .failure(let error):
-                        reject("SpendToAddressError", "Failed to spend", error)
-                    }
+
+            guard let memo = Self.getMemo(string: memo) else {
+                reject("SpendToAddressError", "Invalid memo", genericError)
+                return
+            }
+
+
+            do {
+                let pendingTransaction = try await wallet.synchronizer.sendToAddress(spendingKey: spendingKey, zatoshi: Zatoshi(amount), toAddress: recipient, memo: memo)
+
+                if (pendingTransaction.rawTransactionId != nil && pendingTransaction.raw != nil) {
+                    let tx: NSDictionary = ["txId": pendingTransaction.rawTransactionId!.toHexStringTxId(), "raw":z_hexEncodedString(data:pendingTransaction.raw!)]
+                    resolve(tx)
+                } else {
+                    reject("SpendToAddressError", "Missing txid or rawtx in success object", genericError)
                 }
-        } else {
-            reject("SpendToAddressError", "Wallet does not exist", genericError)
+            } catch {
+                reject("SpendToAddressError", "Failed to spend", error)
+            }
         }
     }
 
@@ -210,8 +274,8 @@ class RNZcash : RCTEventEmitter {
 
     @objc func getShieldedBalance(_ alias: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         if let wallet = SynchronizerMap[alias] {
-            let total = String(describing: wallet.synchronizer.getShieldedBalance())
-            let available = String(describing: wallet.synchronizer.getShieldedVerifiedBalance())
+            let total = wallet.synchronizer.getShieldedBalance().decimalValue.decimalString
+            let available = wallet.synchronizer.getShieldedVerifiedBalance().decimalValue.decimalString
             let balance = ShieldedBalance(availableZatoshi:available, totalZatoshi:total)
             resolve(balance.nsDictionary)
         } else {
@@ -219,21 +283,32 @@ class RNZcash : RCTEventEmitter {
         }
     }
 
-    @objc func rescan(_ alias: String, _ height: Int, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        if let wallet = SynchronizerMap[alias] {
-            do {
-                try wallet.synchronizer.rewind(.height(blockheight: height))
-                wallet.restart = true
-                wallet.fullySynced = false
-            } catch {
-                reject("RescanError", "Failed to rescan wallet", error)
-            } 
-            resolve(nil)
-        } else {
-            reject("RescanError", "Wallet does not exist", genericError)
+    @objc func rescan(_ alias: String, _ height: Int, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+        Task.detached {
+            if let wallet = SynchronizerMap[alias] {
+                do {
+                    try await wallet.synchronizer.rewind(.height(blockheight: height))
+                    wallet.restart = true
+                    wallet.fullySynced = false
+                } catch {
+                    reject("RescanError", "Failed to rescan wallet", error)
+                }
+                resolve(nil)
+            } else {
+                reject("RescanError", "Wallet does not exist", genericError)
+            }
         }
     }    
 
+    // Memo helper
+
+    private static func getMemo(string: String) -> Memo? {
+        guard !string.isEmpty else {
+            return Memo.empty
+        }
+
+        return try? Memo(string: string)
+    }
     // Derivation Tool
     private func getDerivationToolForNetwork(_ network: String) -> DerivationTool {
         switch network {
@@ -246,50 +321,62 @@ class RNZcash : RCTEventEmitter {
 
     @objc func deriveViewingKey(_ seed: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         let derivationTool = getDerivationToolForNetwork(network)
-        if let viewingKeys: [UnifiedViewingKey] = try? derivationTool.deriveUnifiedViewingKeysFromSeed(seed.hexaBytes, numberOfAccounts:1) {
-            let out = ["extfvk": viewingKeys[0].extfvk, "extpub": viewingKeys[0].extpub]
+        if let viewingKey = try? derivationTool.deriveUnifiedSpendingKey(seed: seed.hexaBytes, accountIndex: 0).deriveFullViewingKey() {
+
+            let out = [
+                "ufvk" : viewingKey.stringEncoded
+            ]
+
             resolve(out);
         } else {
             reject("DeriveViewingKeyError", "Failed to derive viewing key", genericError)
         }
     }
 
-    @objc func deriveSpendingKey(_ seed: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        let derivationTool = getDerivationToolForNetwork(network)
-        if let spendingKeys: [String] = try? derivationTool.deriveSpendingKeys(seed:seed.hexaBytes, numberOfAccounts:1) {
-            resolve(spendingKeys[0]);
-        } else {
-            reject("DeriveSpendingKeyError", "Failed to derive spending key", genericError)
-        }
-    }
+    // NOTE: Spending keys don't have an explicit encoding. they shouldn't be stored in any form. 
+//
+//    @objc func deriveSpendingKey(_ seed: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+//        let derivationTool = getDerivationToolForNetwork(network)
+//        if let spendingKeys: [String] = try? derivationTool.deriveSpendingKeys(seed:seed.hexaBytes, numberOfAccounts:1) {
+//            resolve(spendingKeys[0]);
+//        } else {
+//            reject("DeriveSpendingKeyError", "Failed to derive spending key", genericError)
+//        }
+//    }
 
-    @objc func deriveShieldedAddress(_ viewingKey: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
-        let derivationTool = getDerivationToolForNetwork(network)
-        if let address: String = try? derivationTool.deriveShieldedAddress(viewingKey:viewingKey) {
-            resolve(address);
-        } else {
+    @objc func deriveShieldedAddress(_ alias: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+
+
+        guard let wallet = SynchronizerMap[alias],
+            let saplingAddress = wallet.synchronizer.getSaplingAddress(accountIndex: 0) else {
             reject("DeriveShieldedAddressError", "Failed to derive shielded address", genericError)
+            return
         }
+
+        resolve(saplingAddress.stringEncoded)
     }
 
     @objc func isValidShieldedAddress(_ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         let derivationTool = getDerivationToolForNetwork(network)
-        if let bool = try? derivationTool.isValidShieldedAddress(address) {
-            resolve(bool);
-        } else {
-            resolve(false)
-        }
+
+        resolve(derivationTool.isValidSaplingAddress(address))
     }
 
     @objc func isValidTransparentAddress(_ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
         let derivationTool = getDerivationToolForNetwork(network)
-        if let bool = try? derivationTool.isValidTransparentAddress(address) {
-            resolve(bool);
-        } else {
-            resolve(false)
-        }
+
+        resolve(derivationTool.isValidTransparentAddress(address))
     }
 
+    /**
+     This will take care of any possible Zcash address: Sapling, Transparent or Unified
+     */
+    @objc func isValidZcashAddress(_ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) -> Void {
+
+        let network = getNetworkParams(network)
+
+        resolve(((try? Recipient(address, network: network.networkType)) != nil))
+    }
     // Events
     public func sendToJs(name: String, data: Any) {
         self.sendEvent(withName:name, body:data)
@@ -398,11 +485,8 @@ class WalletSynchronizer : NSObject {
             self.processorState.lastDownloadedHeight = self.synchronizer.latestScannedHeight
             self.processorState.scanProgress = 100
             self.processorState.lastScannedHeight = self.synchronizer.latestScannedHeight
-            do {
-                try self.processorState.networkBlockHeight = self.synchronizer.latestHeight()
-            } catch {
-                // ignore if synchronizer throws
-            }
+
+            self.processorState.networkBlockHeight = self.synchronizer.lastState.value.latestScannedHeight
         }
 
         if self.processorState.lastDownloadedHeight != prevLastDownloadedHeight || self.processorState.scanProgress != prevScanProgress ||
