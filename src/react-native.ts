@@ -9,8 +9,9 @@ import {
   ConfirmedTransaction,
   InitializerConfig,
   Network,
-  PendingTransaction,
+  SpendFailure,
   SpendInfo,
+  SpendSuccess,
   SynchronizerCallbacks,
   UnifiedViewingKey,
   WalletBalance
@@ -61,7 +62,7 @@ export const AddressTool = {
   }
 }
 
-class Synchronizer {
+export class Synchronizer {
   eventEmitter: NativeEventEmitter
   subscriptions: EventSubscription[]
   alias: string
@@ -120,7 +121,9 @@ class Synchronizer {
     RNZcash.rescan(this.alias, height)
   }
 
-  async sendToAddress(spendInfo: SpendInfo): Promise<PendingTransaction> {
+  async sendToAddress(
+    spendInfo: SpendInfo
+  ): Promise<SpendSuccess | SpendFailure> {
     const result = await RNZcash.spendToAddress(
       this.alias,
       spendInfo.zatoshi,
