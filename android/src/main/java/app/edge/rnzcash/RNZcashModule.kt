@@ -305,16 +305,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             .emit(eventName, args)
     }
 
-    // TODO: move this to the SDK
-    inline fun ByteArray?.toUtf8Memo(): String {
-        return if (this == null || this[0] >= 0xF5) "" else try {
-            // trim empty and "replacement characters" for codes that can't be represented in unicode
-            String(this, StandardCharsets.UTF_8).trim('\u0000', '\uFFFD')
-        } catch (t: Throwable) {
-            "Unable to parse memo."
-        }
-    }
-
     inline fun ByteArray.toHexReversed(): String {
       val sb = StringBuilder(size * 2)
       var i = size - 1
