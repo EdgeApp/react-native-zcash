@@ -5,6 +5,7 @@ import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
 import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
+import cash.z.ecc.android.sdk.internal.service.LightWalletGrpcService
 import cash.z.ecc.android.sdk.internal.transaction.PagedTransactionRepository
 import cash.z.ecc.android.sdk.internal.*
 import cash.z.ecc.android.sdk.type.*
@@ -173,6 +174,18 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun getLatestNetworkHeight(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
         wallet.synchronizer.latestHeight
+    }
+
+    @ReactMethod
+    fun getBirthdayHeight(network: String = "mainnet", promise: Promise) = promise.wrap {
+        var networkInt = 1
+        if (network != "mainnet") {
+            networkInt = 0
+        }
+        var lightwalletService = LightWalletGrpcService(reactApplicationContext, ZcashNetwork.from(networkInt))
+        val height = lightwalletService?.getLatestBlockHeight()
+        lightwalletService?.shutdown()
+        height
     }
 
     @ReactMethod

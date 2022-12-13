@@ -31,6 +31,12 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
+RCT_EXTERN_METHOD(getBirthdayHeight:(NSString *)host
+:(NSInteger *)port
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
+
 RCT_EXTERN_METHOD(spendToAddress:(NSString *)alias
 :(NSString *)zatoshi
 :(NSString *)toAddress
