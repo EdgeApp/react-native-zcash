@@ -142,6 +142,32 @@ class RNZcash : RCTEventEmitter {
         }
     }
 
+    @objc func getLatestNetworkHeight(_ alias: String, resolver resolve:@escaping RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+        if let wallet = SynchronizerMap[alias] {
+            do {
+                let height = try wallet.synchronizer.latestHeight()
+                resolve(height)
+            } catch {
+                reject("getLatestNetworkHeight", "Failed to query blockheight", error)
+            }
+        } else {
+            reject("getLatestNetworkHeightError", "Wallet does not exist", genericError)
+        }
+    }
+
+    // A convenience method to get the block height when the synchronizer isn't running
+    @objc func getBirthdayHeight(_ host: String, _ port: Int, resolver resolve:@escaping RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+        do {
+            let endpoint = LightWalletEndpoint(address: host, port: port, secure: true)
+            let lightwalletd: LightWalletService = LightWalletGRPCService(endpoint:endpoint)
+            let height = try lightwalletd.latestBlockHeight()
+            lightwalletd.closeConnection()
+            resolve(height)
+        } catch {
+            reject("getLatestNetworkHeightGrpc", "Failed to query blockheight", error)
+        }
+    }
+
     @objc func spendToAddress(_ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String, _ fromAccountIndex: Int, _ spendingKey: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
         if let wallet = SynchronizerMap[alias] {
             let amount = Int64(zatoshi)

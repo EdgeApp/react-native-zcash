@@ -5,6 +5,7 @@ import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
 import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
+import cash.z.ecc.android.sdk.internal.service.LightWalletGrpcService
 import cash.z.ecc.android.sdk.internal.transaction.PagedTransactionRepository
 import cash.z.ecc.android.sdk.internal.*
 import cash.z.ecc.android.sdk.type.*
@@ -176,6 +177,18 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun getBirthdayHeight(network: String = "mainnet", promise: Promise) = promise.wrap {
+        var networkInt = 1
+        if (network != "mainnet") {
+            networkInt = 0
+        }
+        var lightwalletService = LightWalletGrpcService(reactApplicationContext, ZcashNetwork.from(networkInt))
+        val height = lightwalletService?.getLatestBlockHeight()
+        lightwalletService?.shutdown()
+        height
+    }
+
+    @ReactMethod
     fun getShieldedBalance(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
         val map = Arguments.createMap()
@@ -213,13 +226,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                         promise.resolve(map)
                     } else if (tx.isFailure()) {
                         val map = Arguments.createMap()
-                        map.putInt("expiryHeight", tx.expiryHeight)
-                        map.putString("cancelled", tx.cancelled.toString())
-                        map.putString("encodeAttempts", tx.encodeAttempts.toString())
-                        map.putString("submitAttempts", tx.submitAttempts.toString())
                         if (tx.errorMessage != null) map.putString("errorMessage", tx.errorMessage)
                         if (tx.errorCode != null) map.putString("errorCode", tx.errorCode.toString())
-                        promise.resolve(false)
+                        promise.resolve(map)
                     }
                 }
             } catch (t: Throwable) {
@@ -303,16 +312,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         reactApplicationContext
             .getJSModule(RCTDeviceEventEmitter::class.java)
             .emit(eventName, args)
-    }
-
-    // TODO: move this to the SDK
-    inline fun ByteArray?.toUtf8Memo(): String {
-        return if (this == null || this[0] >= 0xF5) "" else try {
-            // trim empty and "replacement characters" for codes that can't be represented in unicode
-            String(this, StandardCharsets.UTF_8).trim('\u0000', '\uFFFD')
-        } catch (t: Throwable) {
-            "Unable to parse memo."
-        }
     }
 
     inline fun ByteArray.toHexReversed(): String {

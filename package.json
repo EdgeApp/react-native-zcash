@@ -31,7 +31,7 @@
     "src"
   ],
   "main": "lib/rnzcash.rn.js",
-  "types": "lib/src/index.d.ts",
+  "types": "lib/src/react-native.d.ts",
   "scripts": {
     "fix": "npm run lint -- --fix",
     "lint": "eslint .",
