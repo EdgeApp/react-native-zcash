@@ -1,5 +1,12 @@
 # React Native Zcash
 
+## 0.3.1 (2022-12-15)
+
+- Add `getBirthdayHeight` method to query blockheight without an active synchronizer
+- iOS: Add missing `getLatestNetworkHeight` method
+- RN: Remove unimplemented methods and POC comments
+- Fix exported types
+
 ## 0.2.3 (2022-08-07)
 
 - iOS: Handle potential throw in synchronizer.latestHeight()
