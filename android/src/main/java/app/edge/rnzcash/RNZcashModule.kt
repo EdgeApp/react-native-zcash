@@ -177,12 +177,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getBirthdayHeight(network: String = "mainnet", promise: Promise) = promise.wrap {
-        var networkInt = 1
-        if (network != "mainnet") {
-            networkInt = 0
-        }
-        var lightwalletService = LightWalletGrpcService(reactApplicationContext, ZcashNetwork.from(networkInt))
+    fun getBirthdayHeight(host: String, port: Int, promise: Promise) = promise.wrap {
+        var lightwalletService = LightWalletGrpcService(reactApplicationContext, host, port)
         val height = lightwalletService?.getLatestBlockHeight()
         lightwalletService?.shutdown()
         height
