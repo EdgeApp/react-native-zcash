@@ -1,8 +1,7 @@
 import {
   EventSubscription,
   NativeEventEmitter,
-  NativeModules,
-  Platform
+  NativeModules
 } from 'react-native'
 
 import {
@@ -22,8 +21,6 @@ const { RNZcash } = NativeModules
 
 type Callback = (...args: any[]) => any
 
-const isAndroid = Platform.OS === 'android'
-
 export const KeyTool = {
   deriveViewingKey: async (
     seedBytesHex: string,
@@ -39,13 +36,8 @@ export const KeyTool = {
     const result = await RNZcash.deriveSpendingKey(seedBytesHex, network)
     return result
   },
-  getBirthdayHeight: async (
-    network: 'mainnet' | 'testnet',
-    host: string,
-    port: number
-  ): Promise<number> => {
-    const args = isAndroid ? [network] : [host, port]
-    const result = await RNZcash.getBirthdayHeight(...args)
+  getBirthdayHeight: async (host: string, port: number): Promise<number> => {
+    const result = await RNZcash.getBirthdayHeight(host, port)
     return result
   }
 }
