@@ -1,5 +1,9 @@
 # React Native Zcash
 
+## 0.3.2 (2022-12-20)
+
+- getBirthdayHeight: Remove Android specific network name and use host and port for both platforms
+
 ## 0.3.1 (2022-12-15)
 
 - Add `getBirthdayHeight` method to query blockheight without an active synchronizer
