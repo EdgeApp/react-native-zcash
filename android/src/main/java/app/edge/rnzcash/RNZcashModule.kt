@@ -16,7 +16,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
@@ -57,8 +56,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             ) as SdkSynchronizer
             }
           }
-          val wallet = getWallet(alias)
-          wallet.hashCode().toString()
         }
 
     @ReactMethod
@@ -102,7 +99,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             })
             wallet.isStarted = true
         }
-        "success"
+        return@wrap null
     }
 
     @ReactMethod
@@ -110,7 +107,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         wallet.stop()
         synchronizerMap.remove(alias)
-        "success"
+        return@wrap null
     }
 
     @ReactMethod
@@ -134,7 +131,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     nativeArray.pushMap(map)
                 }
 
-                nativeArray
+                return@wrap nativeArray
             }
         }
     }
@@ -158,7 +155,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveSpendingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        runBlocking { DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
+        return@wrap runBlocking { DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
     }
 
     //
@@ -169,7 +166,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getLatestNetworkHeight(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
-        wallet.latestHeight
+        return@wrap wallet.latestHeight
     }
 
     @ReactMethod
@@ -178,7 +175,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         var lightwalletService = LightWalletGrpcService.new(reactApplicationContext, endpoint)
         val height = lightwalletService.getLatestBlockHeight()
         lightwalletService.shutdown()
-        height
+        return@wrap height
     }
 
     @ReactMethod
@@ -187,7 +184,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val map = Arguments.createMap()
         map.putString("totalZatoshi", wallet.saplingBalances.value?.total?.toString())
         map.putString("availableZatoshi", wallet.saplingBalances.value?.available?.toString())
-        map
+        return@wrap map
     }
 
     @ReactMethod
@@ -237,7 +234,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveShieldedAddress(viewingKey: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        runBlocking { DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
+        return@wrap runBlocking { DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
     }
 
     @ReactMethod
@@ -252,7 +249,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                   break
                 }
               }
-              isValid
+              return@wrap isValid
             }
         }
     }
@@ -269,7 +266,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                   break
                 }
               }
-              isValid
+              return@wrap isValid
             }
         }
     }
