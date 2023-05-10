@@ -6,7 +6,6 @@ import cash.z.ecc.android.sdk.Synchronizer
 import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.internal.service.LightWalletGrpcService
-import cash.z.ecc.android.sdk.internal.transaction.PagedTransactionRepository
 import cash.z.ecc.android.sdk.internal.*
 import cash.z.ecc.android.sdk.model.*
 import cash.z.ecc.android.sdk.type.*
@@ -14,20 +13,11 @@ import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
-
-class WalletSynchronizer constructor(val initializer: Initializer)  {
-
-    val synchronizer: SdkSynchronizer = Synchronizer.newBlocking(
-        initializer
-    ) as SdkSynchronizer
-    val repository = runBlocking { PagedTransactionRepository.new(initializer.context, 10, initializer.rustBackend, initializer.birthday, initializer.viewingKeys) }
-    var isStarted = false
-}
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -40,7 +30,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
      * In a real production app, we'd use the scope of the parent activity
      */
     var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
-    var synchronizerMap = mutableMapOf<String, WalletSynchronizer>()
+    var synchronizerMap = mutableMapOf<String, SdkSynchronizer>()
 
     val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
 
@@ -51,21 +41,24 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         promise.wrap {
           Twig.plant(TroubleshootingTwig())
           var vk = UnifiedViewingKey(extfvk, extpub)
+          var network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
           if (synchronizerMap[alias] == null) {
             runBlocking {
               Initializer.new(reactApplicationContext) {
-                it.importedWalletBirthday(birthdayHeight)
+                it.importedWalletBirthday(BlockHeight.new(network, birthdayHeight.toLong()))
                 it.setViewingKeys(vk)
                 it.setNetwork(networks[networkName]
                   ?: ZcashNetwork.Mainnet, defaultHost, defaultPort)
                 it.alias = alias
               }
             }.let { initializer ->
-              synchronizerMap[alias] = WalletSynchronizer(initializer)
+              synchronizerMap[alias] = Synchronizer.newBlocking(
+                initializer
+            ) as SdkSynchronizer
             }
           }
           val wallet = getWallet(alias)
-          wallet.synchronizer.hashCode().toString()
+          wallet.hashCode().toString()
         }
 
     @ReactMethod
@@ -73,26 +66,26 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         if (!wallet.isStarted) {
             runBlocking {
-              wallet.synchronizer.prepare()
+              wallet.prepare()
             }
-            wallet.synchronizer.start(moduleScope)
-            val scope = wallet.synchronizer.coroutineScope
-            wallet.synchronizer.processorInfo.collectWith(scope, { update ->
+            wallet.start(moduleScope)
+            val scope = wallet.coroutineScope
+            wallet.processorInfo.collectWith(scope, { update ->
                 sendEvent("UpdateEvent") { args ->
                     args.putString("alias", alias)
-                    args.putInt("lastDownloadedHeight", update.lastDownloadedHeight)
-                    args.putInt("lastScannedHeight", update.lastScannedHeight)
+                    args.putInt("lastDownloadedHeight", update.lastDownloadedHeight.toString().toInt())
+                    args.putInt("lastScannedHeight", update.lastScannedHeight.toString().toInt())
                     args.putInt("scanProgress", update.scanProgress)
-                    args.putInt("networkBlockHeight", update.networkBlockHeight)
+                    args.putInt("networkBlockHeight", update.networkBlockHeight.toString().toInt())
                 }
             })
-            wallet.synchronizer.status.collectWith(scope, { status ->
+            wallet.status.collectWith(scope, { status ->
                 sendEvent("StatusEvent") { args ->
                     args.putString("alias", alias)
                     args.putString("name", status.toString())
                 }
             })
-            wallet.synchronizer.saplingBalances.collectWith(scope, { walletBalance ->
+            wallet.saplingBalances.collectWith(scope, { walletBalance ->
                 sendEvent("BalanceEvent") { args ->
                     args.putString("alias", alias)
                     args.putString("availableZatoshi", walletBalance?.available.toString())
@@ -100,7 +93,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 }
             })
             // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
-            wallet.synchronizer.clearedTransactions.distinctUntilChanged().collectWith(scope, { txList ->
+            wallet.clearedTransactions.distinctUntilChanged().collectWith(scope, { txList ->
                 sendEvent("TransactionEvent") { args ->
                     args.putString("alias", alias)
                     args.putBoolean("hasChanged", true)
@@ -115,7 +108,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stop(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
-        wallet.synchronizer.stop()
+        wallet.stop()
         synchronizerMap.remove(alias)
         "success"
     }
@@ -125,13 +118,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         moduleScope.launch {
             promise.wrap {
-                val result = wallet.repository.findNewTransactions(first..last)
+                val result = runBlocking { wallet.clearedTransactions.flatMapConcat { it.asFlow() }.takeWhile { it.minedHeight >= first.toLong() }
+                .filter { it.minedHeight <= last.toLong() }
+                .toList() }
                 val nativeArray = Arguments.createArray()
 
                 for (i in 0..result.size - 1) {
                     val map = Arguments.createMap()
                     map.putString("value", result[i].value.toString())
-                    map.putInt("minedHeight", result[i].minedHeight)
+                    map.putInt("minedHeight", result[i].minedHeight.toString().toInt())
                     map.putInt("blockTimeInSeconds", result[i].blockTimeInSeconds.toInt())
                     map.putString("rawTransactionId", result[i].rawTransactionId.toHexReversed())
                     if (result[i].memo != null) map.putString("memo", result[i].memo?.decodeToString()?.trim('\u0000', '\uFFFD'))
@@ -148,7 +143,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun rescan(alias: String, height: Int, promise: Promise) {
         val wallet = getWallet(alias)
         moduleScope.launch {
-            wallet.synchronizer.rewindToNearestHeight(height)
+            wallet.rewindToNearestHeight(BlockHeight.new(wallet.network, height.toLong()))
         }
     }
 
@@ -174,7 +169,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getLatestNetworkHeight(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
-        wallet.synchronizer.latestHeight
+        wallet.latestHeight
     }
 
     @ReactMethod
@@ -189,8 +184,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun getShieldedBalance(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
         val map = Arguments.createMap()
-        map.putString("totalZatoshi", wallet.synchronizer.saplingBalances.value?.total?.toString())
-        map.putString("availableZatoshi", wallet.synchronizer.saplingBalances.value?.available?.toString())
+        map.putString("totalZatoshi", wallet.saplingBalances.value?.total?.toString())
+        map.putString("availableZatoshi", wallet.saplingBalances.value?.available?.toString())
         map
     }
 
@@ -205,15 +200,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         promise: Promise
     ) {
         val wallet = getWallet(alias)
-        wallet.synchronizer.coroutineScope.launch {
+        wallet.coroutineScope.launch {
             try {
-                wallet.synchronizer.sendToAddress(
+                wallet.sendToAddress(
                     spendingKey,
                     Zatoshi(zatoshi.toLong()),
                     toAddress,
                     memo,
                     fromAccountIndex
-                ).collectWith(wallet.synchronizer.coroutineScope) {tx ->
+                ).collectWith(wallet.coroutineScope) {tx ->
                     // this block is called repeatedly for each update to the pending transaction, including all 10 confirmations
                     // the promise either shouldn't be used (and rely on events instead) or it can be resolved once the transaction is submitted to the network or mined
                     if (tx.isSubmitSuccess()) { // alternatively use it.isMined() but be careful about making a promise that never resolves!
@@ -251,8 +246,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 var isValid = false
                 val wallets = synchronizerMap.asIterable()
             for (wallet in wallets) {
-                if (wallet.value.synchronizer.network.networkName == network) {
-                  isValid = wallet.value.synchronizer.isValidShieldedAddr(address)
+                if (wallet.value.network.networkName == network) {
+                  isValid = wallet.value.isValidShieldedAddr(address)
                   break
                 }
               }
@@ -268,8 +263,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
               var isValid = false
               val wallets = synchronizerMap.asIterable()
               for (wallet in wallets) {
-                if (wallet.value.synchronizer.network.networkName == network) {
-                  isValid = wallet.value.synchronizer.isValidTransparentAddr(address)
+                if (wallet.value.network.networkName == network) {
+                  isValid = wallet.value.isValidTransparentAddr(address)
                   break
                 }
               }
@@ -285,7 +280,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     /**
      * Retrieve wallet object from synchronizer map
      */
-    private fun getWallet(alias: String): WalletSynchronizer {
+    private fun getWallet(alias: String): SdkSynchronizer {
         val wallet = synchronizerMap.get(alias)
         if (wallet == null) throw Exception("Wallet not found")
         return wallet
