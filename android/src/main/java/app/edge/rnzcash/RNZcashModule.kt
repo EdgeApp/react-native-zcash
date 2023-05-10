@@ -8,6 +8,7 @@ import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.internal.service.LightWalletGrpcService
 import cash.z.ecc.android.sdk.internal.transaction.PagedTransactionRepository
 import cash.z.ecc.android.sdk.internal.*
+import cash.z.ecc.android.sdk.model.*
 import cash.z.ecc.android.sdk.type.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
 import com.facebook.react.bridge.*
@@ -94,8 +95,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             wallet.synchronizer.saplingBalances.collectWith(scope, { walletBalance ->
                 sendEvent("BalanceEvent") { args ->
                     args.putString("alias", alias)
-                    args.putString("availableZatoshi", walletBalance.availableZatoshi.toString())
-                    args.putString("totalZatoshi", walletBalance.totalZatoshi.toString())
+                    args.putString("availableZatoshi", walletBalance?.available.toString())
+                    args.putString("totalZatoshi", walletBalance?.total.toString())
                 }
             })
             // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
@@ -188,8 +189,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun getShieldedBalance(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
         val map = Arguments.createMap()
-        map.putString("totalZatoshi", wallet.synchronizer.saplingBalances.value.totalZatoshi.toString(10))
-        map.putString("availableZatoshi", wallet.synchronizer.saplingBalances.value.availableZatoshi.toString(10))
+        map.putString("totalZatoshi", wallet.synchronizer.saplingBalances.value?.total?.toString())
+        map.putString("availableZatoshi", wallet.synchronizer.saplingBalances.value?.available?.toString())
         map
     }
 
@@ -208,7 +209,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             try {
                 wallet.synchronizer.sendToAddress(
                     spendingKey,
-                    zatoshi.toLong(),
+                    Zatoshi(zatoshi.toLong()),
                     toAddress,
                     memo,
                     fromAccountIndex
