@@ -42,13 +42,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
           Twig.plant(TroubleshootingTwig())
           var vk = UnifiedViewingKey(extfvk, extpub)
           var network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
+          var endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
           if (synchronizerMap[alias] == null) {
             runBlocking {
               Initializer.new(reactApplicationContext) {
                 it.importedWalletBirthday(BlockHeight.new(network, birthdayHeight.toLong()))
                 it.setViewingKeys(vk)
-                it.setNetwork(networks[networkName]
-                  ?: ZcashNetwork.Mainnet, defaultHost, defaultPort)
+                it.setNetwork(network, endpoint)
                 it.alias = alias
               }
             }.let { initializer ->
@@ -174,9 +174,10 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun getBirthdayHeight(host: String, port: Int, promise: Promise) = promise.wrap {
-        var lightwalletService = LightWalletGrpcService(reactApplicationContext, host, port)
-        val height = lightwalletService?.getLatestBlockHeight()
-        lightwalletService?.shutdown()
+        var endpoint = LightWalletEndpoint(host, port, true)
+        var lightwalletService = LightWalletGrpcService.new(reactApplicationContext, endpoint)
+        val height = lightwalletService.getLatestBlockHeight()
+        lightwalletService.shutdown()
         height
     }
 
