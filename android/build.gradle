@@ -1,7 +1,7 @@
 buildscript {
     ext.versions = [
       'kotlin': '1.7.10',
-      'zcash': '1.8.0-beta01',
+      'zcash': '1.9.0-beta04',
       'room': '2.3.0'
     ]
     repositories {
@@ -78,8 +78,8 @@ dependencies {
     kapt "androidx.room:room-compiler:${versions.room}"
 
     implementation "androidx.paging:paging-runtime-ktx:2.1.2"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.3"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
 
     implementation ("androidx.appcompat:appcompat:1.3.1") {
         version {
