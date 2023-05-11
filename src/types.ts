@@ -9,7 +9,7 @@ export interface InitializerConfig {
   networkName: Network
   defaultHost: string
   defaultPort: number
-  fullViewingKey: UnifiedViewingKey
+  mnemonicSeed: string
   alias: string
   birthdayHeight: number
 }

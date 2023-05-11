@@ -1,9 +1,7 @@
 package app.edge.rnzcash;
 
-import cash.z.ecc.android.sdk.Initializer
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
-import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.internal.service.LightWalletGrpcService
 import cash.z.ecc.android.sdk.internal.*
@@ -36,37 +34,16 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     override fun getName() = "RNZcash"
 
     @ReactMethod
-    fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
+    fun initialize(seed: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
         promise.wrap {
           Twig.plant(TroubleshootingTwig())
-          var vk = UnifiedViewingKey(extfvk, extpub)
           var network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
           var endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
-          if (synchronizerMap[alias] == null) {
-            runBlocking {
-              Initializer.new(reactApplicationContext) {
-                it.importedWalletBirthday(BlockHeight.new(network, birthdayHeight.toLong()))
-                it.setViewingKeys(vk)
-                it.setNetwork(network, endpoint)
-                it.alias = alias
-              }
-            }.let { initializer ->
-              synchronizerMap[alias] = Synchronizer.newBlocking(
-                initializer
-            ) as SdkSynchronizer
-            }
+          if (!synchronizerMap.containsKey(alias)) {
+            synchronizerMap.set(alias, Synchronizer.newBlocking(reactApplicationContext, network, alias, endpoint, seed.toByteArray(), BlockHeight.new(network, birthdayHeight.toLong())) as SdkSynchronizer)
           }
-        }
-
-    @ReactMethod
-    fun start(alias: String, promise: Promise) = promise.wrap {
-        val wallet = getWallet(alias)
-        if (!wallet.isStarted) {
-            runBlocking {
-              wallet.prepare()
-            }
-            wallet.start(moduleScope)
-            val scope = wallet.coroutineScope
+          val wallet = getWallet(alias)
+          val scope = wallet.coroutineScope
             wallet.processorInfo.collectWith(scope, { update ->
                 sendEvent("UpdateEvent") { args ->
                     args.putString("alias", alias)
@@ -97,15 +74,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     args.putInt("transactionCount", txList.count())
                 }
             })
-            wallet.isStarted = true
+          return@wrap null
         }
-        return@wrap null
-    }
 
     @ReactMethod
     fun stop(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
-        wallet.stop()
+        wallet.close()
         synchronizerMap.remove(alias)
         return@wrap null
     }
@@ -115,19 +90,22 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         moduleScope.launch {
             promise.wrap {
-                val result = runBlocking { wallet.clearedTransactions.flatMapConcat { it.asFlow() }.takeWhile { it.minedHeight >= first.toLong() }
-                .filter { it.minedHeight <= last.toLong() }
+                val result = runBlocking { wallet.clearedTransactions.flatMapConcat { it.asFlow() }.takeWhile { it.minedHeight >= BlockHeight.new(wallet.network, first.toLong()) }
+                .filter { it.minedHeight <= BlockHeight.new(wallet.network, last.toLong()) }
                 .toList() }
                 val nativeArray = Arguments.createArray()
 
                 for (i in 0..result.size - 1) {
                     val map = Arguments.createMap()
-                    map.putString("value", result[i].value.toString())
+                    map.putString("value", result[i].netValue.toString())
                     map.putInt("minedHeight", result[i].minedHeight.toString().toInt())
-                    map.putInt("blockTimeInSeconds", result[i].blockTimeInSeconds.toInt())
-                    map.putString("rawTransactionId", result[i].rawTransactionId.toHexReversed())
-                    if (result[i].memo != null) map.putString("memo", result[i].memo?.decodeToString()?.trim('\u0000', '\uFFFD'))
-                    if (result[i].toAddress != null) map.putString("toAddress", result[i].toAddress)
+                    map.putInt("blockTimeInSeconds", result[i].blockTimeEpochSeconds.toInt())
+                    map.putString("rawTransactionId", result[i].rawId.toString())
+
+                    val memos = runBlocking { wallet.getMemos(result[i]).takeWhile { it != null }.toList() }
+                    map.putString("memo", memos.joinToString(" "))
+                    val recipients = runBlocking { wallet.getRecipients(result[i]).takeWhile { it != null }.toList() }
+                    map.putString("toAddress", recipients.joinToString(" "))
                     nativeArray.pushMap(map)
                 }
 
@@ -146,16 +124,17 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
-        var keys = runBlocking { DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
+        var keys = runBlocking { DerivationTool.deriveUnifiedFullViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
         val map = Arguments.createMap()
-        map.putString("extfvk", keys.extfvk)
-        map.putString("extpub", keys.extpub)
+        map.putString("extfvk", keys.encoding)
+        map.putString("extpub", "")
         promise.resolve(map)
     }
 
     @ReactMethod
     fun deriveSpendingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        return@wrap runBlocking { DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
+        val spendingKey = runBlocking { DerivationTool.getInstance().deriveUnifiedSpendingKey(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet), Account.DEFAULT) }
+        return@wrap String(spendingKey.copyBytes(), Charsets.UTF_8)
     }
 
     //
@@ -194,25 +173,25 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         toAddress: String,
         memo: String,
         fromAccountIndex: Int,
-        spendingKey: String,
+        seed: String,
         promise: Promise
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
+            val usk = runBlocking { DerivationTool.getInstance().deriveUnifiedSpendingKey(seed.fromHex(), wallet.network, Account.DEFAULT) }
             try {
                 wallet.sendToAddress(
-                    spendingKey,
+                    usk,
                     Zatoshi(zatoshi.toLong()),
                     toAddress,
-                    memo,
-                    fromAccountIndex
+                    memo
                 ).collectWith(wallet.coroutineScope) {tx ->
                     // this block is called repeatedly for each update to the pending transaction, including all 10 confirmations
                     // the promise either shouldn't be used (and rely on events instead) or it can be resolved once the transaction is submitted to the network or mined
                     if (tx.isSubmitSuccess()) { // alternatively use it.isMined() but be careful about making a promise that never resolves!
                         val map = Arguments.createMap()
-                        map.putString("txId", tx.rawTransactionId?.toHexReversed())
-                        map.putString("raw", tx.raw?.toHexReversed())
+                        map.putString("txId", tx.rawTransactionId?.toString())
+                        map.putString("raw", tx.raw.toString())
                         promise.resolve(map)
                     } else if (tx.isFailure()) {
                         val map = Arguments.createMap()
@@ -233,8 +212,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     //
 
     @ReactMethod
-    fun deriveShieldedAddress(viewingKey: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        return@wrap runBlocking { DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
+    fun deriveUnifiedAddress(viewingKey: String, network: String = "mainnet", promise: Promise) = promise.wrap {
+        return@wrap runBlocking { DerivationTool.deriveUnifiedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
     }
 
     @ReactMethod

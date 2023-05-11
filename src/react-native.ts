@@ -43,11 +43,11 @@ export const KeyTool = {
 }
 
 export const AddressTool = {
-  deriveShieldedAddress: async (
+  deriveUnifiedAddress: async (
     viewingKey: string,
     network: Network
   ): Promise<string> => {
-    const result = await RNZcash.deriveShieldedAddress(viewingKey, network)
+    const result = await RNZcash.deriveUnifiedAddress(viewingKey, network)
     return result
   },
   isValidShieldedAddress: async (
@@ -79,11 +79,6 @@ export class Synchronizer {
     this.network = network
   }
 
-  async start(): Promise<String> {
-    const result = await RNZcash.start(this.alias)
-    return result
-  }
-
   async stop(): Promise<String> {
     this.unsubscribe()
     const result = await RNZcash.stop(this.alias)
@@ -92,8 +87,7 @@ export class Synchronizer {
 
   async initialize(initializerConfig: InitializerConfig): Promise<void> {
     await RNZcash.initialize(
-      initializerConfig.fullViewingKey.extfvk,
-      initializerConfig.fullViewingKey.extpub,
+      initializerConfig.mnemonicSeed,
       initializerConfig.birthdayHeight,
       initializerConfig.alias,
       initializerConfig.networkName,
