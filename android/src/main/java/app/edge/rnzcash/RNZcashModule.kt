@@ -90,12 +90,14 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         moduleScope.launch {
             promise.wrap {
-                val result = runBlocking { wallet.clearedTransactions.flatMapConcat { it.asFlow() }.takeWhile { it.minedHeight >= BlockHeight.new(wallet.network, first.toLong()) }
-                .filter { it.minedHeight <= BlockHeight.new(wallet.network, last.toLong()) }
+                val result = runBlocking { wallet.clearedTransactions.flatMapConcat { it.asFlow() }
+                .takeWhile { it.minedHeight == null || it.minedHeight!! >= BlockHeight.new(wallet.network, first.toLong()) }
+                .filter { it.minedHeight == null || it.minedHeight!! <= BlockHeight.new(wallet.network, last.toLong()) }
                 .toList() }
                 val nativeArray = Arguments.createArray()
 
                 for (i in 0..result.size - 1) {
+                    if (result[i].minedHeight == null) continue
                     val map = Arguments.createMap()
                     map.putString("value", result[i].netValue.toString())
                     map.putInt("minedHeight", result[i].minedHeight.toString().toInt())
