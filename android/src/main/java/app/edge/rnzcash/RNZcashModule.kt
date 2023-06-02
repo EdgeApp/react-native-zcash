@@ -2,12 +2,16 @@ package app.edge.rnzcash;
 
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
+import cash.z.ecc.android.sdk.exception.LightWalletException
 import cash.z.ecc.android.sdk.ext.*
-import cash.z.ecc.android.sdk.internal.service.LightWalletGrpcService
 import cash.z.ecc.android.sdk.internal.*
 import cash.z.ecc.android.sdk.model.*
 import cash.z.ecc.android.sdk.type.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
+import co.electriccoin.lightwallet.client.CoroutineLightWalletClient
+import co.electriccoin.lightwallet.client.model.LightWalletEndpoint
+import co.electriccoin.lightwallet.client.model.Response
+import co.electriccoin.lightwallet.client.new
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +40,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun initialize(seed: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
         promise.wrap {
-          Twig.plant(TroubleshootingTwig())
           var network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
           var endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
           if (!synchronizerMap.containsKey(alias)) {
@@ -151,12 +154,26 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getBirthdayHeight(host: String, port: Int, promise: Promise) = promise.wrap {
-        var endpoint = LightWalletEndpoint(host, port, true)
-        var lightwalletService = LightWalletGrpcService.new(reactApplicationContext, endpoint)
-        val height = lightwalletService.getLatestBlockHeight()
-        lightwalletService.shutdown()
-        return@wrap height
+    fun getBirthdayHeight(host: String, port: Int, promise: Promise) {
+        moduleScope.launch {
+            promise.wrap {
+                var endpoint = LightWalletEndpoint(host, port, true)
+                var lightwalletService = LightWalletClient.new(reactApplicationContext, endpoint)
+                return@wrap when (val response = lightwalletService.getLatestBlockHeight()) {
+                    is Response.Success -> {
+                        response.result.value.toInt()
+                    }
+
+                    is Response.Failure -> {
+                        throw LightWalletException.DownloadBlockException(
+                            response.code,
+                            response.description,
+                            response.toThrowable()
+                        )
+                    }
+                }
+            }
+        }
     }
 
     @ReactMethod
