@@ -8,7 +8,7 @@ import cash.z.ecc.android.sdk.internal.*
 import cash.z.ecc.android.sdk.model.*
 import cash.z.ecc.android.sdk.type.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
-import co.electriccoin.lightwallet.client.CoroutineLightWalletClient
+import co.electriccoin.lightwallet.client.LightWalletClient
 import co.electriccoin.lightwallet.client.model.LightWalletEndpoint
 import co.electriccoin.lightwallet.client.model.Response
 import co.electriccoin.lightwallet.client.new
@@ -39,22 +39,32 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun initialize(seed: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
+        moduleScope.launch {
         promise.wrap {
           var network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
           var endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
           if (!synchronizerMap.containsKey(alias)) {
-            synchronizerMap.set(alias, Synchronizer.newBlocking(reactApplicationContext, network, alias, endpoint, seed.toByteArray(), BlockHeight.new(network, birthdayHeight.toLong())) as SdkSynchronizer)
+            synchronizerMap.set(alias, Synchronizer.new(reactApplicationContext, network, alias, endpoint, seed.toByteArray(), BlockHeight.new(network, birthdayHeight.toLong())) as SdkSynchronizer)
           }
           val wallet = getWallet(alias)
           val scope = wallet.coroutineScope
             wallet.processorInfo.collectWith(scope, { update ->
-                sendEvent("UpdateEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putInt("lastDownloadedHeight", update.lastDownloadedHeight.toString().toInt())
-                    args.putInt("lastScannedHeight", update.lastScannedHeight.toString().toInt())
-                    args.putInt("scanProgress", update.scanProgress)
-                    args.putInt("networkBlockHeight", update.networkBlockHeight.toString().toInt())
-                }
+            var lastDownloadedHeight = runBlocking { wallet.processor.downloader.getLastDownloadedHeight() }
+            if (lastDownloadedHeight == null) lastDownloadedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+
+            var lastScannedHeight = update.lastSyncedHeight
+            if (lastScannedHeight == null) lastScannedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+
+            var networkBlockHeight = update.networkBlockHeight
+            if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+
+            sendEvent("UpdateEvent") { args ->
+                args.putString("alias", alias)
+                args.putInt("lastDownloadedHeight", lastDownloadedHeight.value.toInt())
+                args.putInt("lastScannedHeight", lastScannedHeight.value.toInt())
+                args.putInt("scanProgress", wallet.processor.progress.value.toPercentage())
+                args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
+            }
             })
             wallet.status.collectWith(scope, { status ->
                 sendEvent("StatusEvent") { args ->
@@ -62,23 +72,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     args.putString("name", status.toString())
                 }
             })
-            wallet.saplingBalances.collectWith(scope, { walletBalance ->
-                sendEvent("BalanceEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putString("availableZatoshi", walletBalance?.available.toString())
-                    args.putString("totalZatoshi", walletBalance?.total.toString())
-                }
-            })
-            // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
-            wallet.clearedTransactions.distinctUntilChanged().collectWith(scope, { txList ->
-                sendEvent("TransactionEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putBoolean("hasChanged", true)
-                    args.putInt("transactionCount", txList.count())
-                }
-            })
           return@wrap null
         }
+    }
 
     @ReactMethod
     fun stop(alias: String, promise: Promise) = promise.wrap {
@@ -93,7 +89,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         moduleScope.launch {
             promise.wrap {
-                val result = runBlocking { wallet.clearedTransactions.flatMapConcat { it.asFlow() }
+                val result = runBlocking { wallet.transactions.flatMapConcat { it.asFlow() }
                 .takeWhile { it.minedHeight == null || it.minedHeight!! >= BlockHeight.new(wallet.network, first.toLong()) }
                 .filter { it.minedHeight == null || it.minedHeight!! <= BlockHeight.new(wallet.network, last.toLong()) }
                 .toList() }
@@ -129,7 +125,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
-        var keys = runBlocking { DerivationTool.deriveUnifiedFullViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
+        var keys = runBlocking { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }
         val map = Arguments.createMap()
         map.putString("extfvk", keys.encoding)
         map.putString("extpub", "")
@@ -199,26 +195,19 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         wallet.coroutineScope.launch {
             val usk = runBlocking { DerivationTool.getInstance().deriveUnifiedSpendingKey(seed.fromHex(), wallet.network, Account.DEFAULT) }
             try {
-                wallet.sendToAddress(
+                val internalId = wallet.sendToAddress(
                     usk,
                     Zatoshi(zatoshi.toLong()),
                     toAddress,
                     memo
-                ).collectWith(wallet.coroutineScope) {tx ->
-                    // this block is called repeatedly for each update to the pending transaction, including all 10 confirmations
-                    // the promise either shouldn't be used (and rely on events instead) or it can be resolved once the transaction is submitted to the network or mined
-                    if (tx.isSubmitSuccess()) { // alternatively use it.isMined() but be careful about making a promise that never resolves!
-                        val map = Arguments.createMap()
-                        map.putString("txId", tx.rawTransactionId?.toString())
-                        map.putString("raw", tx.raw.toString())
-                        promise.resolve(map)
-                    } else if (tx.isFailure()) {
-                        val map = Arguments.createMap()
-                        if (tx.errorMessage != null) map.putString("errorMessage", tx.errorMessage)
-                        if (tx.errorCode != null) map.putString("errorCode", tx.errorCode.toString())
-                        promise.resolve(map)
-                    }
-                }
+                )
+                val tx = runBlocking { wallet.transactions.flatMapConcat { list -> flowOf(*list.toTypedArray()) } }.firstOrNull { item -> item.id == internalId }
+                if (tx == null) throw Exception("transaction failed")
+
+                val map = Arguments.createMap()
+                map.putString("txId", tx.rawId.toString())
+                if (tx.raw != null) map.putString("raw", tx.raw.toString())
+                promise.resolve(map)
             } catch (t: Throwable) {
                 promise.reject("Err", t)
             }
@@ -232,7 +221,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveUnifiedAddress(viewingKey: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        return@wrap runBlocking { DerivationTool.deriveUnifiedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
+        return@wrap runBlocking { DerivationTool.getInstance().deriveUnifiedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
     }
 
     @ReactMethod
