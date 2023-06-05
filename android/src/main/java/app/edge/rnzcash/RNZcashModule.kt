@@ -225,31 +225,14 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun isValidShieldedAddress(address: String, network: String, promise: Promise) {
+    fun isValidAddress(address: String, network: String, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
                 var isValid = false
                 val wallets = synchronizerMap.asIterable()
             for (wallet in wallets) {
                 if (wallet.value.network.networkName == network) {
-                  isValid = wallet.value.isValidShieldedAddr(address)
-                  break
-                }
-              }
-              return@wrap isValid
-            }
-        }
-    }
-
-    @ReactMethod
-    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {
-        moduleScope.launch {
-            promise.wrap {
-              var isValid = false
-              val wallets = synchronizerMap.asIterable()
-              for (wallet in wallets) {
-                if (wallet.value.network.networkName == network) {
-                  isValid = wallet.value.isValidTransparentAddr(address)
+                  isValid = wallet.value.isValidAddress(address)
                   break
                 }
               }

@@ -50,18 +50,11 @@ export const AddressTool = {
     const result = await RNZcash.deriveUnifiedAddress(viewingKey, network)
     return result
   },
-  isValidShieldedAddress: async (
+  isValidAddress: async (
     address: string,
     network: Network = 'mainnet'
   ): Promise<boolean> => {
-    const result = await RNZcash.isValidShieldedAddress(address, network)
-    return result
-  },
-  isValidTransparentAddress: async (
-    address: string,
-    network: Network = 'mainnet'
-  ): Promise<boolean> => {
-    const result = await RNZcash.isValidTransparentAddress(address, network)
+    const result = await RNZcash.isValidAddress(address, network)
     return result
   }
 }
