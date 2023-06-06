@@ -121,7 +121,7 @@ export class Synchronizer {
       spendInfo.toAddress,
       spendInfo.memo,
       spendInfo.fromAccountIndex,
-      spendInfo.spendingKey
+      spendInfo.mnemonicSeed
     )
     return result
   }

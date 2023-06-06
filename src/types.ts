@@ -19,7 +19,7 @@ export interface SpendInfo {
   toAddress: string
   memo: string
   fromAccountIndex: number
-  spendingKey: string
+  mnemonicSeed: string
 }
 
 export interface SpendSuccess {
