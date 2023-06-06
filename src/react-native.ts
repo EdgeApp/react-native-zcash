@@ -94,8 +94,8 @@ export class Synchronizer {
     return result
   }
 
-  async getShieldedBalance(): Promise<WalletBalance> {
-    const result = await RNZcash.getShieldedBalance(this.alias)
+  async getBalance(): Promise<WalletBalance> {
+    const result = await RNZcash.getBalance(this.alias)
     return result
   }
 

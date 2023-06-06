@@ -173,11 +173,28 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getShieldedBalance(alias: String, promise: Promise) = promise.wrap {
+    fun getBalance(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
+        var availableZatoshi = Zatoshi(0L)
+        var totalZatoshi = Zatoshi(0L)
+
+        val transparentBalances = wallet.transparentBalances.value
+        availableZatoshi.plus(transparentBalances?.available ?: Zatoshi(0L))
+        totalZatoshi.plus(transparentBalances?.total ?: Zatoshi(0L))
+
+        val saplingBalances = wallet.saplingBalances.value
+        availableZatoshi.plus(saplingBalances?.available ?: Zatoshi(0L))
+        totalZatoshi.plus(saplingBalances?.total ?: Zatoshi(0L))
+
+        val orchardBalances = wallet.orchardBalances.value
+        availableZatoshi.plus(orchardBalances?.available ?: Zatoshi(0L))
+        totalZatoshi.plus(orchardBalances?.total ?: Zatoshi(0L))
+
+
+
         val map = Arguments.createMap()
-        map.putString("totalZatoshi", wallet.saplingBalances.value?.total?.toString())
-        map.putString("availableZatoshi", wallet.saplingBalances.value?.available?.toString())
+        map.putString("totalZatoshi", totalZatoshi.value.toString())
+        map.putString("availableZatoshi", availableZatoshi.value.toString())
         return@wrap map
     }
 
