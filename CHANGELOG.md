@@ -1,5 +1,9 @@
 # React Native Zcash
 
+## 0.3.3 (2023-06-22)
+
+- fixed: Update the Android build.gradle to use the upstream-specified Kotlin version and upstream-specified appcompat library version.
+
 ## 0.3.2 (2022-12-20)
 
 - getBirthdayHeight: Remove Android specific network name and use host and port for both platforms
