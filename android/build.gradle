@@ -23,7 +23,7 @@ def safeExtGet(prop, fallback) {
 android {
   compileSdkVersion safeExtGet('compileSdkVersion', 32)
   defaultConfig {
-    minSdkVersion safeExtGet('minSdkVersion', 23)
+    minSdkVersion safeExtGet('minSdkVersion', 27)
     targetSdkVersion safeExtGet('targetSdkVersion', 32)
   }
   lintOptions {
