@@ -25,14 +25,14 @@ function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/zcash/ZcashLightClientKit.git',
-    // 0.14.0-beta:
-    '74f3ae20f26748e162c051e5fa343c71febc4294'
+    // 0.22.0-beta:
+    'c1e07405192415d42caafd06725f28e9649ecd13'
   )
   getRepo(
     'zcash-light-client-ffi',
     'https://github.com/zcash-hackworks/zcash-light-client-ffi.git',
-    // 0.0.3:
-    'b7e8a2abab84c44046b4afe4ee4522a0fa2fcc7f'
+    // 0.3.1:
+    '75821e2b859600707318e4a788abbe27e6615833'
   )
 }
 
@@ -103,13 +103,16 @@ async function copySwift(): Promise<void> {
       // The Swift package manager synthesizes a "Bundle.module" accessor,
       // but with CocoaPods we need to load things manually:
       .replace(
-        'Bundle.module.bundleURL.appendingPathComponent("saplingtree-checkpoints/mainnet/")',
+        'Bundle.module.bundleURL.appendingPathComponent("checkpoints/mainnet/")',
         'Bundle.main.url(forResource: "zcash-mainnet", withExtension: "bundle")!'
       )
       .replace(
-        'Bundle.module.bundleURL.appendingPathComponent("saplingtree-checkpoints/testnet/")',
+        'Bundle.module.bundleURL.appendingPathComponent("checkpoints/testnet/")',
         'Bundle.main.url(forResource: "zcash-testnet", withExtension: "bundle")!'
       )
+      // This block of code uses "Bundle.module" too,
+      // but we can just delete it since phone builds don't need it:
+      .replace(/static let macOS = BundleCheckpointURLProvider.*}\)/s, '')
 
     await toDisklet.setText(file, fixed)
   }
