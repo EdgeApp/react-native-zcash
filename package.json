@@ -15,34 +15,33 @@
     "Matthew Piché <matthew@edge.app>",
     "Kevin Gorham <kevin.gorham@z.cash>"
   ],
+  "main": "lib/rnzcash.rn.js",
+  "types": "lib/src/react-native.d.ts",
   "bin": {
     "copyCheckpoints": "./scripts/copyCheckpoints.js"
   },
   "files": [
-    "android/build.gradle",
-    "android/src",
-    "CHANGELOG.md",
-    "react-native-zcash.podspec",
-    "ios/RNZcash.swift",
-    "ios/RNZcash.m",
-    "ios/RNZcash-Bridging-Header.h",
-    "ios/RNZcash.xcodeproj",
-    "ios/RNZcash.xcworkspace",
-    "scripts/copyCheckpoints.js",
-    "lib",
-    "package.json",
-    "README.md",
-    "src"
+    "/android/build.gradle",
+    "/android/src/",
+    "/CHANGELOG.md",
+    "/ios/RNZcash-Bridging-Header.h",
+    "/ios/RNZcash.m",
+    "/ios/RNZcash.swift",
+    "/ios/RNZcash.xcodeproj",
+    "/ios/RNZcash.xcworkspace",
+    "/lib/",
+    "/package.json",
+    "/react-native-zcash.podspec",
+    "/README.md",
+    "/src/"
   ],
-  "main": "lib/rnzcash.rn.js",
-  "types": "lib/src/react-native.d.ts",
   "scripts": {
     "fix": "npm run lint -- --fix",
     "lint": "eslint .",
-    "updateCheckpoints": "node -r sucrase/register scripts/updateCheckpoints.ts",
     "precommit": "lint-staged && npm test && npm run prepare",
     "prepare": "husky install && rimraf lib && rollup -c && tsc",
-    "test": "mocha -r sucrase/register test/*.test.ts"
+    "test": "mocha -r sucrase/register test/*.test.ts",
+    "updateCheckpoints": "node -r sucrase/register scripts/updateCheckpoints.ts"
   },
   "lint-staged": {
     "*.{js,ts}": "eslint"
