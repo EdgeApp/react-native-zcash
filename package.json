@@ -41,13 +41,8 @@
     "lint": "eslint .",
     "updateCheckpoints": "node -r sucrase/register scripts/updateCheckpoints.ts",
     "precommit": "lint-staged && npm test && npm run prepare",
-    "prepare": "rimraf lib && rollup -c && tsc",
+    "prepare": "husky install && rimraf lib && rollup -c && tsc",
     "test": "mocha -r sucrase/register test/*.test.ts"
-  },
-  "husky": {
-    "hooks": {
-      "pre-commit": "npm run precommit"
-    }
   },
   "lint-staged": {
     "*.{js,ts}": "eslint"
@@ -79,7 +74,7 @@
     "eslint-plugin-promise": "^4.2.1",
     "eslint-plugin-simple-import-sort": "^5.0.3",
     "eslint-plugin-standard": "^4.0.1",
-    "husky": "^4.2.5",
+    "husky": "^7.0.0",
     "lint-staged": "^10.2.6",
     "mocha": "^7.2.0",
     "prettier": "^2.0.5",
