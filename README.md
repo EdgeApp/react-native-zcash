@@ -3,9 +3,11 @@
 [![Build Status](https://travis-ci.org/EdgeApp/react-native-zcash.svg?branch=master)](https://travis-ci.org/EdgeApp/react-native-zcash)
 [![JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
 
-## React Native
+`yarn add react-native-zcash` to install.
 
-To use this library on React Native, run `yarn add react-native-zcash` to install it. Then add these lines to your Podspec file, to work around certain compatiblity issues between the ZCash SDK and React Native:
+## iOS
+
+To use this library on iOS add these lines to your Podspec file, to work around certain compatiblity issues between the ZCash SDK and React Native:
 
 ```ruby
 pod 'CNIOAtomics', :modular_headers => true
@@ -25,6 +27,37 @@ Finally, you can use CocoaPods to integrate the library with your project:
 cd ios
 pod install
 ```
+
+## Android
+
+### Change Gradle version
+
+`react-native-zcash` is not yet compatible with gradle 8 which is the default for RN71. Replace
+
+    distributionUrl=https\://services.gradle.org/distributions/gradle-8.0.1-all.zip
+
+with
+
+    distributionUrl=https\://services.gradle.org/distributions/gradle-7.5.1-all.zip
+
+in your `gradle-wrapper.properties` file
+
+
+### Define Kotlin version
+
+In the `android/build.gradle` add the line
+
+    kotlinVersion = '1.6.10'
+
+to the section
+
+    buildscript {
+      ext {
+        ...
+        kotlinVersion = '1.6.10'
+        ...
+      }
+    }
 
 ## API overview
 
