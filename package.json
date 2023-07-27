@@ -15,6 +15,9 @@
     "Matthew Piché <matthew@edge.app>",
     "Kevin Gorham <kevin.gorham@z.cash>"
   ],
+  "bin": {
+    "copyCheckpoints": "./scripts/copyCheckpoints.js"
+  },
   "files": [
     "android/build.gradle",
     "android/src",
@@ -25,6 +28,7 @@
     "ios/RNZcash-Bridging-Header.h",
     "ios/RNZcash.xcodeproj",
     "ios/RNZcash.xcworkspace",
+    "scripts/copyCheckpoints.js",
     "lib",
     "package.json",
     "README.md",
@@ -35,6 +39,7 @@
   "scripts": {
     "fix": "npm run lint -- --fix",
     "lint": "eslint .",
+    "updateCheckpoints": "node -r sucrase/register scripts/updateCheckpoints.ts",
     "precommit": "lint-staged && npm test && npm run prepare",
     "prepare": "rimraf lib && rollup -c && tsc",
     "test": "mocha -r sucrase/register test/*.test.ts"
@@ -55,6 +60,7 @@
     "@babel/plugin-transform-object-assign": "^7.8.3",
     "@babel/preset-env": "^7.9.6",
     "@babel/preset-typescript": "^7.9.0",
+    "@grpc/grpc-js": "^1.8.20",
     "@types/chai": "^4.2.11",
     "@types/mocha": "^7.0.2",
     "@types/node": "^14.0.5",
