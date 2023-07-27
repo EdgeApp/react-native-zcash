@@ -1,5 +1,10 @@
 # React Native Zcash
 
+## 0.3.4 (2023-07-27)
+
+- added: Add checkpoints to repo with script to update and copy them from Android to iOS build directories
+- changed: Proper install instructions for Android in README
+
 ## 0.3.3 (2023-06-22)
 
 - fixed: Update the Android build.gradle to use the upstream-specified Kotlin version and upstream-specified appcompat library version.
