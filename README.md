@@ -1,31 +1,27 @@
-# React Native Zcash
+# react-native-zcash
 
-[![Build Status](https://travis-ci.org/EdgeApp/react-native-zcash.svg?branch=master)](https://travis-ci.org/EdgeApp/react-native-zcash)
-[![JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
+This library packages the ZCashLightClientKit for use on React Native.
+
+## Usage
 
 `yarn add react-native-zcash` to install.
 
+First, add this library to your React Native app using NPM or Yarn, and run `pod install` as necessary to integrate it with your app's native code.
+
 ## iOS
 
-To use this library on iOS add these lines to your Podspec file, to work around certain compatiblity issues between the ZCash SDK and React Native:
+If you encounter build errors, you may need to add the following code to your Podfile:
 
 ```ruby
-pod 'CNIOAtomics', :modular_headers => true
-pod 'CNIOBoringSSL', :modular_headers => true
-pod 'CNIOBoringSSLShims', :modular_headers => true
-pod 'CNIOLinux', :modular_headers => true
-pod 'CNIODarwin', :modular_headers => true
-pod 'CNIOHTTPParser', :modular_headers => true
-pod 'CNIOWindows', :modular_headers => true
-pod 'CGRPCZlib', :modular_headers => true
-pod 'ZcashLightClientKit', :git => 'https://github.com/zcash/ZcashLightClientKit.git', :commit => '74f3ae20f26748e162c051e5fa343c71febc4294'
-```
-
-Finally, you can use CocoaPods to integrate the library with your project:
-
-```bash
-cd ios
-pod install
+  # Zcash transitive dependencies:
+  pod 'CGRPCZlib', :modular_headers => true
+  pod 'CNIOAtomics', :modular_headers => true
+  pod 'CNIOBoringSSL', :modular_headers => true
+  pod 'CNIOBoringSSLShims', :modular_headers => true
+  pod 'CNIODarwin', :modular_headers => true
+  pod 'CNIOHTTPParser', :modular_headers => true
+  pod 'CNIOLinux', :modular_headers => true
+  pod 'CNIOWindows', :modular_headers => true
 ```
 
 ## Android
@@ -47,10 +43,13 @@ in your `gradle-wrapper.properties` file
 
 In the `android/build.gradle` add the line
 
+```groovy
     kotlinVersion = '1.6.10'
+```
 
 to the section
 
+```groovy
     buildscript {
       ext {
         ...
@@ -58,7 +57,35 @@ to the section
         ...
       }
     }
+```
 
-## API overview
+### API overview
 
-TODO
+- `KeyTool`
+  - `deriveViewingKey`
+  - `deriveSpendingKey`
+  - `getBirthdayHeight`
+- `AddressTool`
+  - `deriveShieldedAddress`
+  - `isValidShieldedAddress`
+  - `isValidTransparentAddress`
+- `makeSynchronizer`
+  - `start`
+  - `stop`
+  - `rescan`
+  - `getLatestNetworkHeight`
+  - `getShieldedBalance`
+  - `getTransactions`
+  - `sendToAddress`
+
+## Developing
+
+This library relies on a large amount of native code from other repos. To integrate this code, you must run the following script before publishing this library to NPM:
+
+```sh
+npm run update-sources
+```
+
+This script will download ZCashLightClientKit and zcash-light-client-ffi, modify them for React Native, and integrate them with our wrapper code.
+
+The `update-sources` script is also the place to make edits when upgrading any of the third-party dependencies.

@@ -1645,6 +1645,13 @@ dezalgo@^1.0.0:
     asap "^2.0.0"
     wrappy "1"
 
+disklet@^0.4.6:
+  version "0.4.6"
+  resolved "https://registry.yarnpkg.com/disklet/-/disklet-0.4.6.tgz#5315b62e331423f97f609bf34e5868665d988f4e"
+  integrity sha512-Qz+P1eFcade+IbTaA2B7jsMMibSZR/hdV1YontkdfGmZjBRHhBTOPwknc89g7R4rAQomfLey1HHkDoHDww98eA==
+  dependencies:
+    rfc4648 "^1.3.0"
+
 doctrine@1.5.0:
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/doctrine/-/doctrine-1.5.0.tgz#379dce730f6166f76cefa4e6707a159b02c5a6fa"
