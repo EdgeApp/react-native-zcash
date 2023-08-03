@@ -1,5 +1,8 @@
 # Build output:
+/ios/libzcashlc.xcframework/
+/ios/ZCashLightClientKit/
 /lib/
+/tmp/
 
 # Package managers:
 *.tgz

@@ -1,8 +1,13 @@
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
+import { makeNodeDisklet } from 'disklet/lib/src/backends/dummy'
 import * as fs from 'fs'
-import path from 'path'
+import path, { join } from 'path'
 import { promisify } from 'util'
+
+import { copyCheckpoints } from './copyCheckpoints'
+
+const disklet = makeNodeDisklet(join(__dirname, '../'))
 
 const NUM_BLOCKS_BETWEEN_CHECKPOINTS = 10000
 
@@ -137,5 +142,6 @@ const main = async (): Promise<void> => {
     console.log(network)
     await run(networks[network])
   }
+  await copyCheckpoints(disklet)
 }
 main().catch(e => console.log(e))

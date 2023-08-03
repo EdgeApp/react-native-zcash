@@ -1,5 +1,4 @@
 import Foundation
-import ZcashLightClientKit
 import os
 
 var SynchronizerMap = [String: WalletSynchronizer]()
@@ -125,7 +124,7 @@ class RNZcash : RCTEventEmitter {
                 wallet.subscribe()
             } catch {
                 reject("StartError", "Synchronizer failed to start", error)
-            } 
+            }
             resolve(nil)
         } else {
             reject("StartError", "Wallet does not exist", genericError)
@@ -253,12 +252,12 @@ class RNZcash : RCTEventEmitter {
                 wallet.fullySynced = false
             } catch {
                 reject("RescanError", "Failed to rescan wallet", error)
-            } 
+            }
             resolve(nil)
         } else {
             reject("RescanError", "Wallet does not exist", genericError)
         }
-    }    
+    }
 
     // Derivation Tool
     private func getDerivationToolForNetwork(_ network: String) -> DerivationTool {
@@ -396,7 +395,7 @@ class WalletSynchronizer : NSObject {
             emit("StatusEvent", data)
         }
     }
-    
+
     @objc public func updateProcessorState(notification: NSNotification) {
         let prevLastDownloadedHeight = self.processorState.lastDownloadedHeight
         let prevScanProgress = self.processorState.scanProgress
@@ -512,7 +511,7 @@ func outputParamsURLHelper(_ alias: String) throws -> URL {
 
 
 // Logger
-class RNZcashLogger: ZcashLightClientKit.Logger {
+class RNZcashLogger: Logger {
     enum LogLevel: Int {
         case debug
         case error
@@ -520,33 +519,33 @@ class RNZcashLogger: ZcashLightClientKit.Logger {
         case event
         case info
     }
-    
+
     enum LoggerType {
         case osLog
         case printerLog
     }
-    
+
     var level: LogLevel
     var loggerType: LoggerType
-    
+
     init(logLevel: LogLevel, type: LoggerType = .osLog) {
         self.level = logLevel
         self.loggerType = type
     }
-    
+
     private static let subsystem = Bundle.main.bundleIdentifier!
     static let oslog = OSLog(subsystem: subsystem, category: "logs")
-    
+
     func debug(_ message: String, file: StaticString = #file, function: StaticString = #function, line: Int = #line) {
         guard level.rawValue == LogLevel.debug.rawValue else { return }
         log(level: "DEBUG 🐞", message: message, file: file, function: function, line: line)
     }
-    
+
     func error(_ message: String, file: StaticString = #file, function: StaticString = #function, line: Int = #line) {
         guard level.rawValue <= LogLevel.error.rawValue else { return }
         log(level: "ERROR 💥", message: message, file: file, function: function, line: line)
     }
-    
+
     func warn(_ message: String, file: StaticString = #file, function: StaticString = #function, line: Int = #line) {
         guard level.rawValue <= LogLevel.warning.rawValue else { return }
         log(level: "WARNING ⚠️", message: message, file: file, function: function, line: line)
@@ -556,12 +555,12 @@ class RNZcashLogger: ZcashLightClientKit.Logger {
         guard level.rawValue <= LogLevel.event.rawValue else { return }
         log(level: "EVENT ⏱", message: message, file: file, function: function, line: line)
     }
-    
+
     func info(_ message: String, file: StaticString = #file, function: StaticString = #function, line: Int = #line) {
         guard level.rawValue <= LogLevel.info.rawValue else { return }
         log(level: "INFO ℹ️", message: message, file: file, function: function, line: line)
     }
-    
+
     private func log(level: String, message: String, file: StaticString = #file, function: StaticString = #function, line: Int = #line) {
         let fileName = (String(describing: file) as NSString).lastPathComponent
         switch loggerType {
