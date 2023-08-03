@@ -1,35 +1,17 @@
 # Build output:
-lib/
+/lib/
 
 # Package managers:
 *.tgz
-node_modules/
-npm-debug.log
-package-lock.json
-yarn-error.log
+/node_modules/
+/npm-debug.log
+/package-lock.json
+/yarn-error.log
 
 # Editors:
 .DS_Store
 .idea/
 .vscode/
-
-# Xcode
-!default.mode1v3
-!default.mode2v3
-!default.pbxuser
-!default.perspectivev3
-*.hmap
-*.ipa
-*.mode1v3
-*.mode2v3
-*.moved-aside
-*.pbxuser
-*.perspectivev3
-*.xccheckout
-*.xcuserstate
-build/
-DerivedData/
-xcuserdata/
 
 # Android/IntelliJ
 .gradle
