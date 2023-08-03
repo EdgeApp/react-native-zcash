@@ -1,5 +1,10 @@
 # React Native Zcash
 
+## 0.3.5 (2023-08-03)
+
+- fixed: Update our default Kotlin version to be compatible with React Native v0.72.
+- changed: Remove our iOS dependency on ZCashLightClientKit by copying the Swift sources directly into this NPM package. This removes the need for users to touch checkpoints on either platform.
+
 ## 0.3.4 (2023-07-27)
 
 - added: Add checkpoints to repo with script to update and copy them from Android to iOS build directories
