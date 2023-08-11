@@ -9,7 +9,7 @@ export interface InitializerConfig {
   networkName: Network
   defaultHost: string
   defaultPort: number
-  fullViewingKey: UnifiedViewingKey
+  mnemonicSeed: string
   alias: string
   birthdayHeight: number
 }
@@ -18,8 +18,7 @@ export interface SpendInfo {
   zatoshi: string
   toAddress: string
   memo: string
-  fromAccountIndex: number
-  spendingKey: string
+  mnemonicSeed: string
 }
 
 export interface SpendSuccess {

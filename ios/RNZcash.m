@@ -4,8 +4,7 @@
 @interface RCT_EXTERN_MODULE(RNZcash, RCTEventEmitter<RCTBridgeModule>)
 
 // Synchronizer
-RCT_EXTERN_METHOD(initialize:(NSString *)extfvk
-:(NSString *)extpub
+RCT_EXTERN_METHOD(initialize:(NSString *)seed
 :(NSInteger *)birthdayHeight
 :(NSString *)alias
 :(NSString *)networkName
@@ -36,11 +35,10 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
-RCT_EXTERN_METHOD(spendToAddress:(NSString *)alias
+RCT_EXTERN_METHOD(sendToAddress:(NSString *)alias
 :(NSString *)zatoshi
 :(NSString *)toAddress
 :(NSString *)memo
-:(NSInteger *)fromAccountIndex
 :(NSString *)spendingKey
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
@@ -53,13 +51,12 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
-RCT_EXTERN_METHOD(getShieldedBalance:(NSString *)alias
+RCT_EXTERN_METHOD(getBalance:(NSString *)alias
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
 RCT_EXTERN_METHOD(rescan:(NSString *)alias
-:(NSInteger *)height
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
@@ -71,25 +68,12 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
-RCT_EXTERN_METHOD(deriveSpendingKey:(NSString *)seed
-:(NSString *)network
+RCT_EXTERN_METHOD(deriveUnifiedAddress:(NSString *)alias
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
-RCT_EXTERN_METHOD(deriveShieldedAddress:(NSString *)viewingKey
-:(NSString *)network
-resolver:(RCTPromiseResolveBlock)resolve
-rejecter:(RCTPromiseRejectBlock)reject
-)
-
-RCT_EXTERN_METHOD(isValidTransparentAddress:(NSString *)address
-:(NSString *)network
-resolver:(RCTPromiseResolveBlock)resolve
-rejecter:(RCTPromiseRejectBlock)reject
-)
-
-RCT_EXTERN_METHOD(isValidShieldedAddress:(NSString *)address
+RCT_EXTERN_METHOD(isValidAddress:(NSString *)address
 :(NSString *)network
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject

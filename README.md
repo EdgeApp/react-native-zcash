@@ -32,22 +32,21 @@ buildscript {
 
 ### API overview
 
-- `KeyTool`
+- `Tools`
   - `deriveViewingKey`
-  - `deriveSpendingKey`
   - `getBirthdayHeight`
-- `AddressTool`
-  - `deriveShieldedAddress`
-  - `isValidShieldedAddress`
-  - `isValidTransparentAddress`
+  - `isValidAddress`
 - `makeSynchronizer`
   - `start`
   - `stop`
   - `rescan`
   - `getLatestNetworkHeight`
-  - `getShieldedBalance`
+  - `getBalance`
   - `getTransactions`
   - `sendToAddress`
+  - `deriveUnifiedAddress`
+
+`Tools` contains methods that don't require a running synchronizer (with one exception, `isValidAddress` on Android which does requires any synchronizer connected to the requested network).
 
 ## Developing
 

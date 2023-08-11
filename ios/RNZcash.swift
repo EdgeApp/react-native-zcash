@@ -1,13 +1,9 @@
+import Combine
 import Foundation
+import MnemonicSwift
 import os
 
 var SynchronizerMap = [String: WalletSynchronizer]()
-var loggerProxy = RNZcashLogger(logLevel: .debug)
-
-struct ViewingKey: UnifiedViewingKey {
-  var extfvk: ExtendedFullViewingKey
-  var extpub: ExtendedPublicKey
-}
 
 struct ConfirmedTx {
   var minedHeight: Int
@@ -15,8 +11,8 @@ struct ConfirmedTx {
   var rawTransactionId: String
   var blockTimeInSeconds: Int
   var value: String
-  var memo: String?
-  var dictionary: [String: Any] {
+  var memo: Array<String>?
+  var dictionary: [String: Any?] {
     return [
       "minedHeight": minedHeight,
       "toAddress": toAddress,
@@ -31,7 +27,7 @@ struct ConfirmedTx {
   }
 }
 
-struct ShieldedBalance {
+struct TotalBalances {
   var availableZatoshi: String
   var totalZatoshi: String
   var dictionary: [String: Any] {
@@ -86,65 +82,76 @@ class RNZcash: RCTEventEmitter {
 
   // Synchronizer
   @objc func initialize(
-    _ extfvk: String, _ extpub: String, _ birthdayHeight: Int, _ alias: String,
-    _ networkName: String, _ defaultHost: String, _ defaultPort: Int,
-    resolver resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock
+    _ seed: String, _ birthdayHeight: Int, _ alias: String, _ networkName: String,
+    _ defaultHost: String, _ defaultPort: Int, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    let network = getNetworkParams(networkName)
-    let endpoint = LightWalletEndpoint(address: defaultHost, port: defaultPort, secure: true)
-    let viewingKey = ViewingKey(extfvk: extfvk, extpub: extpub)
-    let initializer = Initializer(
-      cacheDbURL: try! cacheDbURLHelper(alias, network),
-      dataDbURL: try! dataDbURLHelper(alias, network),
-      pendingDbURL: try! pendingDbURLHelper(alias, network),
-      endpoint: endpoint,
-      network: network,
-      spendParamsURL: try! spendParamsURLHelper(alias),
-      outputParamsURL: try! outputParamsURLHelper(alias),
-      viewingKeys: [viewingKey],
-      walletBirthday: birthdayHeight,
-      loggerProxy: loggerProxy
-    )
-    if SynchronizerMap[alias] == nil {
-      do {
-        let wallet = try WalletSynchronizer(
-          alias: alias, initializer: initializer, emitter: sendToJs)
-        try wallet.synchronizer.initialize()
-        try wallet.synchronizer.prepare()
-        SynchronizerMap[alias] = wallet
+    Task {
+      let network = getNetworkParams(networkName)
+      let endpoint = LightWalletEndpoint(address: defaultHost, port: defaultPort, secure: true)
+      let initializer = Initializer(
+        cacheDbURL: try! cacheDbURLHelper(alias, network),
+        fsBlockDbRoot: try! fsBlockDbRootURLHelper(alias, network),
+        dataDbURL: try! dataDbURLHelper(alias, network),
+        endpoint: endpoint,
+        network: network,
+        spendParamsURL: try! spendParamsURLHelper(alias),
+        outputParamsURL: try! outputParamsURLHelper(alias),
+        saplingParamsSourceURL: SaplingParamsSourceURL.default,
+        alias: ZcashSynchronizerAlias.custom(alias)
+      )
+      if SynchronizerMap[alias] == nil {
+        do {
+          let wallet = try WalletSynchronizer(
+            alias: alias, initializer: initializer, emitter: sendToJs)
+          let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
+          let viewingKeys = try deriveUnifiedViewingKey(seed, network)
+
+          _ = try await wallet.synchronizer.prepare(
+            with: seedBytes,
+            viewingKeys: [viewingKeys],
+            walletBirthday: birthdayHeight
+          )
+          try await wallet.synchronizer.start()
+          wallet.subscribe()
+          SynchronizerMap[alias] = wallet
+          resolve(nil)
+        } catch {
+          reject("InitializeError", "Synchronizer failed to initialize", error)
+        }
+      } else {
+        // Wallet already initialized
         resolve(nil)
-      } catch {
-        reject("InitializeError", "Synchronizer failed to initialize", error)
       }
-    } else {
-      // Wallet already initialized
-      resolve(nil)
     }
   }
 
   @objc func start(
-    _ alias: String, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    if let wallet = SynchronizerMap[alias] {
-      do {
-        try wallet.synchronizer.start()
-        wallet.subscribe()
-      } catch {
-        reject("StartError", "Synchronizer failed to start", error)
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        do {
+          try await wallet.synchronizer.start()
+          wallet.subscribe()
+        } catch {
+          reject("StartError", "Synchronizer failed to start", error)
+        }
+        resolve(nil)
+      } else {
+        reject("StartError", "Wallet does not exist", genericError)
       }
-      resolve(nil)
-    } else {
-      reject("StartError", "Wallet does not exist", genericError)
     }
   }
 
   @objc func stop(
-    _ alias: String, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     if let wallet = SynchronizerMap[alias] {
       wallet.synchronizer.stop()
+      wallet.cancellables.forEach { $0.cancel() }
       SynchronizerMap[alias] = nil
       resolve(nil)
     } else {
@@ -154,142 +161,200 @@ class RNZcash: RCTEventEmitter {
 
   @objc func getLatestNetworkHeight(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    if let wallet = SynchronizerMap[alias] {
-      do {
-        let height = try wallet.synchronizer.latestHeight()
-        resolve(height)
-      } catch {
-        reject("getLatestNetworkHeight", "Failed to query blockheight", error)
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        do {
+          let height = try await wallet.synchronizer.latestHeight()
+          resolve(height)
+        } catch {
+          reject("getLatestNetworkHeight", "Failed to query blockheight", error)
+        }
+      } else {
+        reject("getLatestNetworkHeightError", "Wallet does not exist", genericError)
       }
-    } else {
-      reject("getLatestNetworkHeightError", "Wallet does not exist", genericError)
     }
   }
 
   // A convenience method to get the block height when the synchronizer isn't running
   @objc func getBirthdayHeight(
     _ host: String, _ port: Int, resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    do {
-      let endpoint = LightWalletEndpoint(address: host, port: port, secure: true)
-      let lightwalletd: LightWalletService = LightWalletGRPCService(endpoint: endpoint)
-      let height = try lightwalletd.latestBlockHeight()
-      lightwalletd.closeConnection()
-      resolve(height)
-    } catch {
-      reject("getLatestNetworkHeightGrpc", "Failed to query blockheight", error)
+    Task {
+      do {
+        let endpoint = LightWalletEndpoint(address: host, port: port, secure: true)
+        let lightwalletd: LightWalletService = LightWalletGRPCService(endpoint: endpoint)
+        let height = try await lightwalletd.latestBlockHeight()
+        lightwalletd.closeConnection()
+        resolve(height)
+      } catch {
+        reject("getLatestNetworkHeightGrpc", "Failed to query blockheight", error)
+      }
     }
   }
 
-  @objc func spendToAddress(
-    _ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String,
-    _ fromAccountIndex: Int, _ spendingKey: String,
+  @objc func sendToAddress(
+    _ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String, _ seed: String,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    if let wallet = SynchronizerMap[alias] {
-      let amount = Int64(zatoshi)
-      if amount == nil {
-        reject("SpendToAddressError", "Amount is invalid", genericError)
-        return
-      }
-      wallet.synchronizer.sendToAddress(
-        spendingKey: spendingKey,
-        zatoshi: amount!,
-        toAddress: toAddress,
-        memo: memo,
-        from: fromAccountIndex
-      ) { result in
-        switch result {
-        case .success(let pendingTransaction):
-          if pendingTransaction.rawTransactionId != nil && pendingTransaction.raw != nil {
-            let tx: NSDictionary = [
-              "txId": pendingTransaction.rawTransactionId!.toHexStringTxId(),
-              "raw": z_hexEncodedString(data: pendingTransaction.raw!),
-            ]
-            resolve(tx)
-          } else {
-            reject("SpendToAddressError", "Missing txid or rawtx in success object", genericError)
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        let amount = Int64(zatoshi)
+        if amount == nil {
+          reject("SpendToAddressError", "Amount is invalid", genericError)
+          return
+        }
+
+        do {
+          let spendingKey = try deriveUnifiedSpendingKey(seed, wallet.synchronizer.network)
+          var sdkMemo: Memo? = nil
+          if memo != "" {
+            sdkMemo = try Memo(string: memo)
           }
-        case .failure(let error):
+          let broadcastTx = try await wallet.synchronizer.sendToAddress(
+            spendingKey: spendingKey,
+            zatoshi: Zatoshi(amount!),
+            toAddress: Recipient(toAddress, network: wallet.synchronizer.network.networkType),
+            memo: sdkMemo
+          )
+
+          let tx: NSMutableDictionary = ["txId": broadcastTx.rawID.hexEncodedString()]
+          if broadcastTx.raw != nil {
+            tx["raw"] = broadcastTx.raw?.hexEncodedString()
+          }
+          resolve(tx)
+        } catch {
           reject("SpendToAddressError", "Failed to spend", error)
         }
+      } else {
+        reject("SpendToAddressError", "Wallet does not exist", genericError)
       }
-    } else {
-      reject("SpendToAddressError", "Wallet does not exist", genericError)
     }
   }
 
   @objc func getTransactions(
-    _ alias: String, _ first: Int, _ last: Int, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
+    _ alias: String, _ first: Int, _ last: Int, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    if let wallet = SynchronizerMap[alias] {
-      if !wallet.fullySynced {
-        reject("GetTransactionsError", "Wallet is not synced", genericError)
-        return
-      }
-      var out: [NSDictionary] = []
-      if let txs = try? wallet.synchronizer.allConfirmedTransactions(from: nil, limit: Int.max) {
-        // Get all txs, all the time, because the iOS SDK doesn't support querying by block height
-        for tx in txs {
-          if tx.rawTransactionId != nil {
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        if !wallet.fullySynced {
+          reject("GetTransactionsError", "Wallet is not synced", genericError)
+          return
+        }
+
+        var out: [NSDictionary] = []
+        do {
+          let txs = try await wallet.synchronizer.allTransactions()
+          let filterTxs = txs.filter {
+            $0.minedHeight != nil && $0.minedHeight! >= first && $0.minedHeight! <= last
+              && $0.blockTime != nil
+          }
+          for tx in filterTxs {
             var confTx = ConfirmedTx(
-              minedHeight: tx.minedHeight,
-              rawTransactionId: (tx.rawTransactionId?.toHexStringTxId())!,
-              blockTimeInSeconds: Int(tx.blockTimeInSeconds),
-              value: String(describing: tx.value)
+              minedHeight: tx.minedHeight!,
+              rawTransactionId: (tx.rawID.toHexStringTxId()),
+              blockTimeInSeconds: Int(tx.blockTime!),
+              value: String(describing: abs(tx.value.amount))
             )
-            if tx.toAddress != nil {
-              confTx.toAddress = tx.toAddress
+            if tx.isSentTransaction {
+              let recipients = await wallet.synchronizer.getRecipients(for: tx)
+              if recipients.count > 0 {
+                let addresses = recipients.compactMap {
+                  if case let .address(address) = $0 {
+                    return address
+                  } else {
+                    return nil
+                  }
+                }
+                confTx.toAddress = addresses.first!.stringEncoded
+              }
             }
-            if tx.memo != nil {
-              confTx.memo = String(bytes: tx.memo!, encoding: .utf8)
+            if tx.memoCount > 0 {
+              let memos = (try? await wallet.synchronizer.getMemos(for: tx)) ?? []
+              let textMemos = memos.compactMap {
+                if case let .text(memo) = $0 {
+                  return memo.string
+                } else {
+                  return nil
+                }
+              }
+              confTx.memo = textMemos
             }
             out.append(confTx.nsDictionary)
           }
+          resolve(out)
+        } catch {
+          reject("GetTransactionsError", "Failed to get transactions", genericError)
         }
-        resolve(out)
       } else {
-        reject("GetTransactionsError", "Failed to query transactions", genericError)
+        reject("GetTransactionsError", "Wallet does not exist", genericError)
       }
-    } else {
-      reject("GetTransactionsError", "Wallet does not exist", genericError)
     }
   }
 
-  @objc func getShieldedBalance(
-    _ alias: String, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
+  @objc func getBalance(
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    if let wallet = SynchronizerMap[alias] {
-      let total = String(describing: wallet.synchronizer.getShieldedBalance())
-      let available = String(describing: wallet.synchronizer.getShieldedVerifiedBalance())
-      let balance = ShieldedBalance(availableZatoshi: available, totalZatoshi: total)
-      resolve(balance.nsDictionary)
-    } else {
-      reject("GetShieldedBalanceError", "Wallet does not exist", genericError)
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        do {
+          let totalShieldedBalance = try await wallet.synchronizer.getShieldedBalance()
+          let availableShieldedBalance = try await wallet.synchronizer.getShieldedVerifiedBalance()
+
+          let transparentWalletBalance = try await wallet.synchronizer.getTransparentBalance(
+            accountIndex: 0)
+          let totalTransparentBalance = transparentWalletBalance.total
+          let availableTransparentBalance = transparentWalletBalance.verified
+
+          let totalAvailable = availableShieldedBalance + availableTransparentBalance
+          let totalTotal = totalShieldedBalance + totalTransparentBalance
+
+          let balance = TotalBalances(
+            availableZatoshi: String(totalAvailable.amount), totalZatoshi: String(totalTotal.amount)
+          )
+          resolve(balance.nsDictionary)
+          return
+        } catch {
+          reject("GetShieldedBalanceError", "Error", error)
+        }
+      } else {
+        reject("GetShieldedBalanceError", "Wallet does not exist", genericError)
+      }
     }
   }
 
   @objc func rescan(
-    _ alias: String, _ height: Int, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    if let wallet = SynchronizerMap[alias] {
-      do {
-        try wallet.synchronizer.rewind(.height(blockheight: height))
-        wallet.restart = true
-        wallet.fullySynced = false
-      } catch {
-        reject("RescanError", "Failed to rescan wallet", error)
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        wallet.synchronizer.rewind(.birthday).sink(
+          receiveCompletion: { completion in
+            Task {
+              switch completion {
+              case .finished:
+                wallet.status = "STOPPED"
+                wallet.fullySynced = false
+                wallet.restart = true
+                wallet.initializeProcessorState()
+                wallet.cancellables.forEach { $0.cancel() }
+                wallet.subscribe()
+                resolve(nil)
+              case .failure:
+                reject("RescanError", "Failed to rescan wallet", genericError)
+              }
+            }
+          }, receiveValue: { _ in }
+        ).store(in: &wallet.cancellables)
+      } else {
+        reject("RescanError", "Wallet does not exist", genericError)
       }
-      resolve(nil)
-    } else {
-      reject("RescanError", "Wallet does not exist", genericError)
     }
   }
 
@@ -303,66 +368,66 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
+  private func deriveUnifiedSpendingKey(_ seed: String, _ network: ZcashNetwork) throws
+    -> UnifiedSpendingKey
+  {
+    let derivationTool = DerivationTool(networkType: network.networkType)
+    let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
+    let spendingKey = try derivationTool.deriveUnifiedSpendingKey(seed: seedBytes, accountIndex: 0)
+    return spendingKey
+  }
+
+  private func deriveUnifiedViewingKey(_ seed: String, _ network: ZcashNetwork) throws
+    -> UnifiedFullViewingKey
+  {
+    let spendingKey = try deriveUnifiedSpendingKey(seed, network)
+    let derivationTool = DerivationTool(networkType: network.networkType)
+    let viewingKey = try derivationTool.deriveUnifiedFullViewingKey(from: spendingKey)
+    return viewingKey
+  }
+
   @objc func deriveViewingKey(
-    _ seed: String, _ network: String, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
+    _ seed: String, _ network: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    do {
+      let zcashNetwork = getNetworkParams(network)
+      let viewingKey = try deriveUnifiedViewingKey(seed, zcashNetwork)
+      resolve(viewingKey.stringEncoded)
+    } catch {
+      reject("DeriveViewingKeyError", "Failed to derive viewing key", error)
+    }
+  }
+
+  @objc func deriveUnifiedAddress(
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        do {
+          let unifiedAddress = try await wallet.synchronizer.getUnifiedAddress(accountIndex: 0)
+          resolve(unifiedAddress.stringEncoded)
+          return
+        } catch {
+          reject("deriveUnifiedAddress", "Failed to derive unified address", error)
+        }
+      } else {
+        reject("deriveUnifiedAddress", "Wallet does not exist", genericError)
+      }
+    }
+  }
+
+  @objc func isValidAddress(
+    _ address: String, _ network: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     let derivationTool = getDerivationToolForNetwork(network)
-    if let viewingKeys: [UnifiedViewingKey] = try? derivationTool.deriveUnifiedViewingKeysFromSeed(
-      seed.hexaBytes, numberOfAccounts: 1)
+    if derivationTool.isValidUnifiedAddress(address)
+      || derivationTool.isValidSaplingAddress(address)
+      || derivationTool.isValidTransparentAddress(address)
     {
-      let out = ["extfvk": viewingKeys[0].extfvk, "extpub": viewingKeys[0].extpub]
-      resolve(out)
-    } else {
-      reject("DeriveViewingKeyError", "Failed to derive viewing key", genericError)
-    }
-  }
-
-  @objc func deriveSpendingKey(
-    _ seed: String, _ network: String, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
-  ) {
-    let derivationTool = getDerivationToolForNetwork(network)
-    if let spendingKeys: [String] = try? derivationTool.deriveSpendingKeys(
-      seed: seed.hexaBytes, numberOfAccounts: 1)
-    {
-      resolve(spendingKeys[0])
-    } else {
-      reject("DeriveSpendingKeyError", "Failed to derive spending key", genericError)
-    }
-  }
-
-  @objc func deriveShieldedAddress(
-    _ viewingKey: String, _ network: String, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
-  ) {
-    let derivationTool = getDerivationToolForNetwork(network)
-    if let address: String = try? derivationTool.deriveShieldedAddress(viewingKey: viewingKey) {
-      resolve(address)
-    } else {
-      reject("DeriveShieldedAddressError", "Failed to derive shielded address", genericError)
-    }
-  }
-
-  @objc func isValidShieldedAddress(
-    _ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
-  ) {
-    let derivationTool = getDerivationToolForNetwork(network)
-    if let bool = try? derivationTool.isValidShieldedAddress(address) {
-      resolve(bool)
-    } else {
-      resolve(false)
-    }
-  }
-
-  @objc func isValidTransparentAddress(
-    _ address: String, _ network: String, resolver resolve: RCTPromiseResolveBlock,
-    rejecter reject: RCTPromiseRejectBlock
-  ) {
-    let derivationTool = getDerivationToolForNetwork(network)
-    if let bool = try? derivationTool.isValidTransparentAddress(address) {
-      resolve(bool)
+      resolve(true)
     } else {
       resolve(false)
     }
@@ -386,11 +451,12 @@ class WalletSynchronizer: NSObject {
   var fullySynced: Bool
   var restart: Bool
   var processorState: ProcessorState
+  var cancellables: [AnyCancellable] = []
 
   init(alias: String, initializer: Initializer, emitter: @escaping (String, Any) -> Void) throws {
     self.alias = alias
-    self.synchronizer = try SDKSynchronizer(initializer: initializer)
-    self.status = "DISCONNECTED"
+    self.synchronizer = SDKSynchronizer(initializer: initializer)
+    self.status = "STOPPED"
     self.emit = emitter
     self.fullySynced = false
     self.restart = false
@@ -404,55 +470,24 @@ class WalletSynchronizer: NSObject {
   }
 
   public func subscribe() {
-    // Processor status
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(updateProcessorState(notification:)), name: nil,
-      object: self.synchronizer.blockProcessor)
-    // Synchronizer Status
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerDisconnected,
-      object: self.synchronizer)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerStopped,
-      object: self.synchronizer)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerSynced,
-      object: self.synchronizer)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerDownloading,
-      object: self.synchronizer)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerValidating,
-      object: self.synchronizer)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerScanning,
-      object: self.synchronizer)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(updateSyncStatus(notification:)), name: .synchronizerEnhancing,
-      object: self.synchronizer)
+    self.synchronizer.stateStream
+      .throttle(for: .seconds(0.3), scheduler: DispatchQueue.main, latest: true)
+      .sink(receiveValue: { [weak self] state in self?.updateSyncStatus(event: state) })
+      .store(in: &cancellables)
   }
 
-  @objc public func updateSyncStatus(notification: NSNotification) {
+  func updateSyncStatus(event: SynchronizerState) {
+
     if !self.fullySynced {
-      switch notification.name.rawValue {
-      case "SDKSyncronizerStopped":
-        self.status = "STOPPED"
-        if self.restart == true {
-          try! self.synchronizer.start()
-          initializeProcessorState()
-          self.restart = false
+      switch event.internalSyncStatus {
+      case .syncing:
+        self.status = "SYNCING"
+        self.restart = false
+      case .synced:
+        if self.restart {
+          // The synchronizer emits "synced" status after starting a rescan. We need to ignore these.
+          return
         }
-      case "SDKSyncronizerDisconnected":
-        self.status = "DISCONNECTED"
-      case "SDKSyncronizerDownloading":
-        self.status = "DOWNLOADING"
-      case "SDKSyncronizerScanning":
-        if self.processorState.scanProgress < 100 {
-          self.status = "SCANNING"
-        } else {
-          self.status = "SYNCED"
-        }
-      case "SDKSyncronizerSynced":
         self.status = "SYNCED"
         self.fullySynced = true
       default:
@@ -462,25 +497,24 @@ class WalletSynchronizer: NSObject {
       let data: NSDictionary = ["alias": self.alias, "name": self.status]
       emit("StatusEvent", data)
     }
+
+    updateProcessorState(event: event)
   }
 
-  @objc public func updateProcessorState(notification: NSNotification) {
+  func updateProcessorState(event: SynchronizerState) {
     let prevLastDownloadedHeight = self.processorState.lastDownloadedHeight
     let prevScanProgress = self.processorState.scanProgress
-    let prevLastScannedHeight = self.synchronizer.latestScannedHeight
+    let prevLastScannedHeight = self.synchronizer.latestState.latestScannedHeight
     let prevNetworkBlockHeight = self.processorState.lastScannedHeight
 
-    if !self.fullySynced {
-      switch self.synchronizer.status {
-      case .downloading(let status):
+    if event.internalSyncStatus != .synced {
+      switch event.internalSyncStatus {
+      case .syncing(let status):
         // The SDK emits all zero values just before emitting a SYNCED status so we need to ignore these
         if status.targetHeight == 0 {
           return
         }
         self.processorState.lastDownloadedHeight = status.progressHeight
-        self.processorState.networkBlockHeight = status.targetHeight
-        break
-      case .scanning(let status):
         self.processorState.scanProgress = Int(floor(status.progress * 100))
         self.processorState.lastScannedHeight = status.progressHeight
         self.processorState.networkBlockHeight = status.targetHeight
@@ -488,14 +522,10 @@ class WalletSynchronizer: NSObject {
         return
       }
     } else {
-      self.processorState.lastDownloadedHeight = self.synchronizer.latestScannedHeight
+      self.processorState.lastDownloadedHeight = self.synchronizer.latestState.latestScannedHeight
       self.processorState.scanProgress = 100
-      self.processorState.lastScannedHeight = self.synchronizer.latestScannedHeight
-      do {
-        try self.processorState.networkBlockHeight = self.synchronizer.latestHeight()
-      } catch {
-        // ignore if synchronizer throws
-      }
+      self.processorState.lastScannedHeight = self.synchronizer.latestState.latestScannedHeight
+      self.processorState.networkBlockHeight = event.latestBlockHeight
     }
 
     if self.processorState.lastDownloadedHeight != prevLastDownloadedHeight
@@ -515,20 +545,6 @@ class WalletSynchronizer: NSObject {
       scanProgress: 0,
       networkBlockHeight: 0
     )
-  }
-}
-
-// Convert hex strings to [UInt8]
-extension StringProtocol {
-  var hexaData: Data { .init(hexa) }
-  var hexaBytes: [UInt8] { .init(hexa) }
-  private var hexa: UnfoldSequence<UInt8, Index> {
-    sequence(state: startIndex) { startIndex in
-      guard startIndex < self.endIndex else { return nil }
-      let endIndex = self.index(startIndex, offsetBy: 2, limitedBy: self.endIndex) ?? self.endIndex
-      defer { startIndex = endIndex }
-      return UInt8(self[startIndex..<endIndex], radix: 16)
-    }
   }
 }
 
@@ -567,12 +583,6 @@ func dataDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
     )
 }
 
-func pendingDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
-  try documentsDirectoryHelper()
-    .appendingPathComponent(
-      network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultPendingDbName)
-}
-
 func spendParamsURLHelper(_ alias: String) throws -> URL {
   try documentsDirectoryHelper().appendingPathComponent(alias + "sapling-spend.params")
 }
@@ -581,89 +591,10 @@ func outputParamsURLHelper(_ alias: String) throws -> URL {
   try documentsDirectoryHelper().appendingPathComponent(alias + "sapling-output.params")
 }
 
-// Logger
-class RNZcashLogger: Logger {
-  enum LogLevel: Int {
-    case debug
-    case error
-    case warning
-    case event
-    case info
-  }
-
-  enum LoggerType {
-    case osLog
-    case printerLog
-  }
-
-  var level: LogLevel
-  var loggerType: LoggerType
-
-  init(logLevel: LogLevel, type: LoggerType = .osLog) {
-    self.level = logLevel
-    self.loggerType = type
-  }
-
-  private static let subsystem = Bundle.main.bundleIdentifier!
-  static let oslog = OSLog(subsystem: subsystem, category: "logs")
-
-  func debug(
-    _ message: String, file: StaticString = #file, function: StaticString = #function,
-    line: Int = #line
-  ) {
-    guard level.rawValue == LogLevel.debug.rawValue else { return }
-    log(level: "DEBUG 🐞", message: message, file: file, function: function, line: line)
-  }
-
-  func error(
-    _ message: String, file: StaticString = #file, function: StaticString = #function,
-    line: Int = #line
-  ) {
-    guard level.rawValue <= LogLevel.error.rawValue else { return }
-    log(level: "ERROR 💥", message: message, file: file, function: function, line: line)
-  }
-
-  func warn(
-    _ message: String, file: StaticString = #file, function: StaticString = #function,
-    line: Int = #line
-  ) {
-    guard level.rawValue <= LogLevel.warning.rawValue else { return }
-    log(level: "WARNING ⚠️", message: message, file: file, function: function, line: line)
-  }
-
-  func event(
-    _ message: String, file: StaticString = #file, function: StaticString = #function,
-    line: Int = #line
-  ) {
-    guard level.rawValue <= LogLevel.event.rawValue else { return }
-    log(level: "EVENT ⏱", message: message, file: file, function: function, line: line)
-  }
-
-  func info(
-    _ message: String, file: StaticString = #file, function: StaticString = #function,
-    line: Int = #line
-  ) {
-    guard level.rawValue <= LogLevel.info.rawValue else { return }
-    log(level: "INFO ℹ️", message: message, file: file, function: function, line: line)
-  }
-
-  private func log(
-    level: String, message: String, file: StaticString = #file, function: StaticString = #function,
-    line: Int = #line
-  ) {
-    let fileName = (String(describing: file) as NSString).lastPathComponent
-    switch loggerType {
-    case .printerLog:
-      print("[\(level)] \(fileName) - \(function) - line: \(line) -> \(message)")
-    default:
-      os_log(
-        "[%{public}@] %{public}@ - %{public}@ - Line: %{public}d -> %{public}@",
-        level,
-        fileName,
-        String(describing: function),
-        line,
-        message
-      )
-    }
-  }
+func fsBlockDbRootURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
+  try documentsDirectoryHelper()
+    .appendingPathComponent(
+      network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultFsCacheName,
+      isDirectory: true
+    )
 }

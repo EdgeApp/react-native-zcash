@@ -21,7 +21,7 @@ const { RNZcash } = NativeModules
 
 type Callback = (...args: any[]) => any
 
-export const KeyTool = {
+export const Tools = {
   deriveViewingKey: async (
     seedBytesHex: string,
     network: Network
@@ -29,39 +29,15 @@ export const KeyTool = {
     const result = await RNZcash.deriveViewingKey(seedBytesHex, network)
     return result
   },
-  deriveSpendingKey: async (
-    seedBytesHex: string,
-    network: Network
-  ): Promise<string> => {
-    const result = await RNZcash.deriveSpendingKey(seedBytesHex, network)
-    return result
-  },
   getBirthdayHeight: async (host: string, port: number): Promise<number> => {
     const result = await RNZcash.getBirthdayHeight(host, port)
     return result
-  }
-}
-
-export const AddressTool = {
-  deriveShieldedAddress: async (
-    viewingKey: string,
-    network: Network
-  ): Promise<string> => {
-    const result = await RNZcash.deriveShieldedAddress(viewingKey, network)
-    return result
   },
-  isValidShieldedAddress: async (
+  isValidAddress: async (
     address: string,
     network: Network = 'mainnet'
   ): Promise<boolean> => {
-    const result = await RNZcash.isValidShieldedAddress(address, network)
-    return result
-  },
-  isValidTransparentAddress: async (
-    address: string,
-    network: Network = 'mainnet'
-  ): Promise<boolean> => {
-    const result = await RNZcash.isValidTransparentAddress(address, network)
+    const result = await RNZcash.isValidAddress(address, network)
     return result
   }
 }
@@ -79,11 +55,6 @@ export class Synchronizer {
     this.network = network
   }
 
-  async start(): Promise<String> {
-    const result = await RNZcash.start(this.alias)
-    return result
-  }
-
   async stop(): Promise<String> {
     this.unsubscribe()
     const result = await RNZcash.stop(this.alias)
@@ -92,8 +63,7 @@ export class Synchronizer {
 
   async initialize(initializerConfig: InitializerConfig): Promise<void> {
     await RNZcash.initialize(
-      initializerConfig.fullViewingKey.extfvk,
-      initializerConfig.fullViewingKey.extpub,
+      initializerConfig.mnemonicSeed,
       initializerConfig.birthdayHeight,
       initializerConfig.alias,
       initializerConfig.networkName,
@@ -102,13 +72,18 @@ export class Synchronizer {
     )
   }
 
+  async deriveUnifiedAddress(): Promise<string> {
+    const result = await RNZcash.deriveUnifiedAddress(this.alias)
+    return result
+  }
+
   async getLatestNetworkHeight(alias: string): Promise<number> {
     const result = await RNZcash.getLatestNetworkHeight(alias)
     return result
   }
 
-  async getShieldedBalance(): Promise<WalletBalance> {
-    const result = await RNZcash.getShieldedBalance(this.alias)
+  async getBalance(): Promise<WalletBalance> {
+    const result = await RNZcash.getBalance(this.alias)
     return result
   }
 
@@ -121,20 +96,19 @@ export class Synchronizer {
     return result
   }
 
-  rescan(height: number): void {
-    RNZcash.rescan(this.alias, height)
+  rescan(): void {
+    RNZcash.rescan(this.alias)
   }
 
   async sendToAddress(
     spendInfo: SpendInfo
   ): Promise<SpendSuccess | SpendFailure> {
-    const result = await RNZcash.spendToAddress(
+    const result = await RNZcash.sendToAddress(
       this.alias,
       spendInfo.zatoshi,
       spendInfo.toAddress,
       spendInfo.memo,
-      spendInfo.fromAccountIndex,
-      spendInfo.spendingKey
+      spendInfo.mnemonicSeed
     )
     return result
   }
