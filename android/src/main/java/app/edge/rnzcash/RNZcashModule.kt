@@ -1,28 +1,27 @@
-package app.edge.rnzcash;
+package app.edge.rnzcash
 
 import cash.z.ecc.android.sdk.Initializer
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
 import cash.z.ecc.android.sdk.db.entity.*
 import cash.z.ecc.android.sdk.ext.*
+import cash.z.ecc.android.sdk.internal.*
 import cash.z.ecc.android.sdk.internal.service.LightWalletGrpcService
 import cash.z.ecc.android.sdk.internal.transaction.PagedTransactionRepository
-import cash.z.ecc.android.sdk.internal.*
-import cash.z.ecc.android.sdk.type.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
+import cash.z.ecc.android.sdk.type.*
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
 
-class WalletSynchronizer constructor(val initializer: Initializer)  {
+class WalletSynchronizer constructor(val initializer: Initializer) {
 
     val synchronizer: SdkSynchronizer = Synchronizer.newBlocking(
-        initializer
+        initializer,
     ) as SdkSynchronizer
     val repository = runBlocking { PagedTransactionRepository.new(initializer.context, 10, initializer.rustBackend, initializer.birthday, initializer.viewingKeys) }
     var isStarted = false
@@ -48,23 +47,27 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
         promise.wrap {
-          Twig.plant(TroubleshootingTwig())
-          var vk = UnifiedViewingKey(extfvk, extpub)
-          if (synchronizerMap[alias] == null) {
-            runBlocking {
-              Initializer.new(reactApplicationContext) {
-                it.importedWalletBirthday(birthdayHeight)
-                it.setViewingKeys(vk)
-                it.setNetwork(networks[networkName]
-                  ?: ZcashNetwork.Mainnet, defaultHost, defaultPort)
-                it.alias = alias
-              }
-            }.let { initializer ->
-              synchronizerMap[alias] = WalletSynchronizer(initializer)
+            Twig.plant(TroubleshootingTwig())
+            var vk = UnifiedViewingKey(extfvk, extpub)
+            if (synchronizerMap[alias] == null) {
+                runBlocking {
+                    Initializer.new(reactApplicationContext) {
+                        it.importedWalletBirthday(birthdayHeight)
+                        it.setViewingKeys(vk)
+                        it.setNetwork(
+                            networks[networkName]
+                                ?: ZcashNetwork.Mainnet,
+                            defaultHost,
+                            defaultPort,
+                        )
+                        it.alias = alias
+                    }
+                }.let { initializer ->
+                    synchronizerMap[alias] = WalletSynchronizer(initializer)
+                }
             }
-          }
-          val wallet = getWallet(alias)
-          wallet.synchronizer.hashCode().toString()
+            val wallet = getWallet(alias)
+            wallet.synchronizer.hashCode().toString()
         }
 
     @ReactMethod
@@ -72,7 +75,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         if (!wallet.isStarted) {
             runBlocking {
-              wallet.synchronizer.prepare()
+                wallet.synchronizer.prepare()
             }
             wallet.synchronizer.start(moduleScope)
             val scope = wallet.synchronizer.coroutineScope
@@ -169,7 +172,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     // Properties
     //
 
-
     @ReactMethod
     fun getLatestNetworkHeight(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
@@ -201,7 +203,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         memo: String,
         fromAccountIndex: Int,
         spendingKey: String,
-        promise: Promise
+        promise: Promise,
     ) {
         val wallet = getWallet(alias)
         wallet.synchronizer.coroutineScope.launch {
@@ -211,8 +213,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     zatoshi.toLong(),
                     toAddress,
                     memo,
-                    fromAccountIndex
-                ).collectWith(wallet.synchronizer.coroutineScope) {tx ->
+                    fromAccountIndex,
+                ).collectWith(wallet.synchronizer.coroutineScope) { tx ->
                     // this block is called repeatedly for each update to the pending transaction, including all 10 confirmations
                     // the promise either shouldn't be used (and rely on events instead) or it can be resolved once the transaction is submitted to the network or mined
                     if (tx.isSubmitSuccess()) { // alternatively use it.isMined() but be careful about making a promise that never resolves!
@@ -231,7 +233,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 promise.reject("Err", t)
             }
         }
-
     }
 
     //
@@ -249,13 +250,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             promise.wrap {
                 var isValid = false
                 val wallets = synchronizerMap.asIterable()
-            for (wallet in wallets) {
-                if (wallet.value.synchronizer.network.networkName == network) {
-                  isValid = wallet.value.synchronizer.isValidShieldedAddr(address)
-                  break
+                for (wallet in wallets) {
+                    if (wallet.value.synchronizer.network.networkName == network) {
+                        isValid = wallet.value.synchronizer.isValidShieldedAddr(address)
+                        break
+                    }
                 }
-              }
-              isValid
+                isValid
             }
         }
     }
@@ -264,15 +265,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun isValidTransparentAddress(address: String, network: String, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
-              var isValid = false
-              val wallets = synchronizerMap.asIterable()
-              for (wallet in wallets) {
-                if (wallet.value.synchronizer.network.networkName == network) {
-                  isValid = wallet.value.synchronizer.isValidTransparentAddr(address)
-                  break
+                var isValid = false
+                val wallets = synchronizerMap.asIterable()
+                for (wallet in wallets) {
+                    if (wallet.value.synchronizer.network.networkName == network) {
+                        isValid = wallet.value.synchronizer.isValidTransparentAddr(address)
+                        break
+                    }
                 }
-              }
-              isValid
+                isValid
             }
         }
     }
@@ -289,7 +290,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         if (wallet == null) throw Exception("Wallet not found")
         return wallet
     }
-
 
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
@@ -311,10 +311,10 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     inline fun ByteArray.toHexReversed(): String {
-      val sb = StringBuilder(size * 2)
-      var i = size - 1
-      while (i >= 0)
-        sb.append(String.format("%02x", this[i--]))
-      return sb.toString()
+        val sb = StringBuilder(size * 2)
+        var i = size - 1
+        while (i >= 0)
+            sb.append(String.format("%02x", this[i--]))
+        return sb.toString()
     }
 }
