@@ -30,6 +30,8 @@
     "/src/"
   ],
   "scripts": {
+    "fix-kotlin": "ktlint --format 'android/src/**/*.kt'",
+    "fix-swift": "swift-format format -i ios/RNZcash.swift",
     "fix": "npm run lint -- --fix",
     "lint": "eslint .",
     "precommit": "lint-staged && npm run prepare",
