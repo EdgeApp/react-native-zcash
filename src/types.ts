@@ -17,7 +17,7 @@ export interface InitializerConfig {
 export interface SpendInfo {
   zatoshi: string
   toAddress: string
-  memo: string
+  memo?: string
   mnemonicSeed: string
 }
 

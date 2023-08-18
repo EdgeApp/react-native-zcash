@@ -222,7 +222,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         alias: String,
         zatoshi: String,
         toAddress: String,
-        memo: String,
+        memo: String = "",
         seed: String,
         promise: Promise,
     ) {
