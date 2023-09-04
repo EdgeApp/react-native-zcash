@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.license      = package['license']
   s.authors      = package['author']
 
-  s.platform     = :ios, "12.0"
+  s.platform     = :ios, "13.0"
   s.source = {
     :git => "https://github.com/EdgeApp/react-native-zcash.git",
     :tag => "v#{s.version}"
@@ -21,12 +21,13 @@ Pod::Spec.new do |s|
     "ios/RNZcash.swift",
     "ios/ZCashLightClientKit/**/*.swift"
   s.resource_bundles = {
-    "zcash-mainnet" => "ios/ZCashLightClientKit/Resources/saplingtree-checkpoints/mainnet/*.json",
-    "zcash-testnet" => "ios/ZCashLightClientKit/Resources/saplingtree-checkpoints/testnet/*.json"
+    "zcash-mainnet" => "ios/ZCashLightClientKit/Resources/checkpoints/mainnet/*.json",
+    "zcash-testnet" => "ios/ZCashLightClientKit/Resources/checkpoints/testnet/*.json"
   }
   s.vendored_frameworks = "ios/libzcashlc.xcframework"
 
-  s.dependency "gRPC-Swift", "~> 1.0"
+  s.dependency "MnemonicSwift", "~> 2.2"
+  s.dependency "gRPC-Swift", "~> 1.8"
   s.dependency "SQLite.swift", "~> 0.12"
   s.dependency "React-Core"
 end

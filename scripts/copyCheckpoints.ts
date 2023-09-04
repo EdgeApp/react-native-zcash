@@ -11,7 +11,7 @@ export async function copyCheckpoints(disklet: Disklet): Promise<void> {
   )
   const toDisklet = navigateDisklet(
     disklet,
-    'ios/ZCashLightClientKit/Resources/saplingtree-checkpoints/mainnet'
+    'ios/ZCashLightClientKit/Resources/checkpoints/mainnet'
   )
 
   const files = justFiles(await fromDisklet.list())

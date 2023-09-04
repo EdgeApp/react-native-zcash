@@ -66,9 +66,11 @@ const createClient = (opts: Options): any => {
 }
 
 const writeCheckpoint = (path: string, json: any): void => {
-  const newCheckpoint = { ...json, tree: json.saplingTree }
-  delete newCheckpoint.saplingTree
-  delete newCheckpoint.orchardTree
+  const newCheckpoint = { ...json }
+  // Remove any null values
+  for (const [key, value] of Object.entries(newCheckpoint)) {
+    if (value === '') delete newCheckpoint[key]
+  }
 
   fs.writeFileSync(
     `${path}/${json.height}.json`,

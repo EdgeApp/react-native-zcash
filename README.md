@@ -32,22 +32,21 @@ buildscript {
 
 ### API overview
 
-- `KeyTool`
+- `Tools`
   - `deriveViewingKey`
-  - `deriveSpendingKey`
   - `getBirthdayHeight`
-- `AddressTool`
-  - `deriveShieldedAddress`
-  - `isValidShieldedAddress`
-  - `isValidTransparentAddress`
+  - `isValidAddress`
 - `makeSynchronizer`
   - `start`
   - `stop`
   - `rescan`
   - `getLatestNetworkHeight`
-  - `getShieldedBalance`
+  - `getBalance`
   - `getTransactions`
   - `sendToAddress`
+  - `deriveUnifiedAddress`
+
+`Tools` contains methods that don't require a running synchronizer (with one exception, `isValidAddress` on Android which does requires any synchronizer connected to the requested network).
 
 ## Developing
 
@@ -62,3 +61,7 @@ This script will download ZCashLightClientKit and zcash-light-client-ffi, modify
 The `update-sources` script is also the place to make edits when upgrading any of the third-party dependencies.
 
 We also have an `update-checkpoints` command that will connect to a node and generate fresh checkpoints based on the chain state.
+
+### Source Formatting
+
+Install `ktlint` and `swift-format` using your package manager, such as `brew install ktlint swift-format`. Run `fix-swift` or `fix-kotlin` to format the native sources.

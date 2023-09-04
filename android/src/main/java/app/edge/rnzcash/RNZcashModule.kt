@@ -1,32 +1,25 @@
-package app.edge.rnzcash;
+package app.edge.rnzcash
 
-import cash.z.ecc.android.sdk.Initializer
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
-import cash.z.ecc.android.sdk.db.entity.*
+import cash.z.ecc.android.sdk.exception.LightWalletException
 import cash.z.ecc.android.sdk.ext.*
-import cash.z.ecc.android.sdk.internal.service.LightWalletGrpcService
-import cash.z.ecc.android.sdk.internal.transaction.PagedTransactionRepository
 import cash.z.ecc.android.sdk.internal.*
-import cash.z.ecc.android.sdk.type.*
+import cash.z.ecc.android.sdk.model.*
 import cash.z.ecc.android.sdk.tool.DerivationTool
+import cash.z.ecc.android.sdk.type.*
+import co.electriccoin.lightwallet.client.LightWalletClient
+import co.electriccoin.lightwallet.client.model.LightWalletEndpoint
+import co.electriccoin.lightwallet.client.model.Response
+import co.electriccoin.lightwallet.client.new
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.nio.charset.StandardCharsets
 import kotlin.coroutines.EmptyCoroutineContext
-
-class WalletSynchronizer constructor(val initializer: Initializer)  {
-
-    val synchronizer: SdkSynchronizer = Synchronizer.newBlocking(
-        initializer
-    ) as SdkSynchronizer
-    val repository = runBlocking { PagedTransactionRepository.new(initializer.context, 10, initializer.rustBackend, initializer.birthday, initializer.viewingKeys) }
-    var isStarted = false
-}
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -39,199 +32,222 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
      * In a real production app, we'd use the scope of the parent activity
      */
     var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
-    var synchronizerMap = mutableMapOf<String, WalletSynchronizer>()
+    var synchronizerMap = mutableMapOf<String, SdkSynchronizer>()
 
     val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
 
     override fun getName() = "RNZcash"
 
     @ReactMethod
-    fun initialize(extfvk: String, extpub: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
-        promise.wrap {
-          Twig.plant(TroubleshootingTwig())
-          var vk = UnifiedViewingKey(extfvk, extpub)
-          if (synchronizerMap[alias] == null) {
-            runBlocking {
-              Initializer.new(reactApplicationContext) {
-                it.importedWalletBirthday(birthdayHeight)
-                it.setViewingKeys(vk)
-                it.setNetwork(networks[networkName]
-                  ?: ZcashNetwork.Mainnet, defaultHost, defaultPort)
-                it.alias = alias
-              }
-            }.let { initializer ->
-              synchronizerMap[alias] = WalletSynchronizer(initializer)
+    fun initialize(seed: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
+        moduleScope.launch {
+            promise.wrap {
+                var network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
+                var endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
+                var seedPhrase = SeedPhrase.new(seed)
+                if (!synchronizerMap.containsKey(alias)) {
+                    synchronizerMap.set(alias, Synchronizer.new(reactApplicationContext, network, alias, endpoint, seedPhrase.toByteArray(), BlockHeight.new(network, birthdayHeight.toLong())) as SdkSynchronizer)
+                }
+                val wallet = getWallet(alias)
+                val scope = wallet.coroutineScope
+                wallet.processorInfo.collectWith(scope, { update ->
+                    var lastDownloadedHeight = runBlocking { wallet.processor.downloader.getLastDownloadedHeight() }
+                    if (lastDownloadedHeight == null) lastDownloadedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+
+                    var lastScannedHeight = update.lastSyncedHeight
+                    if (lastScannedHeight == null) lastScannedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+
+                    var networkBlockHeight = update.networkBlockHeight
+                    if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+
+                    sendEvent("UpdateEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putInt("lastDownloadedHeight", lastDownloadedHeight.value.toInt())
+                        args.putInt("lastScannedHeight", lastScannedHeight.value.toInt())
+                        args.putInt("scanProgress", wallet.processor.progress.value.toPercentage())
+                        args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
+                    }
+                })
+                wallet.status.collectWith(scope, { status ->
+                    sendEvent("StatusEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putString("name", status.toString())
+                    }
+                })
+                return@wrap null
             }
-          }
-          val wallet = getWallet(alias)
-          wallet.synchronizer.hashCode().toString()
         }
 
     @ReactMethod
-    fun start(alias: String, promise: Promise) = promise.wrap {
+    fun stop(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
-        if (!wallet.isStarted) {
+        moduleScope.launch {
             runBlocking {
-              wallet.synchronizer.prepare()
+                wallet.close()
+                synchronizerMap.remove(alias)
+                promise.resolve(null)
             }
-            wallet.synchronizer.start(moduleScope)
-            val scope = wallet.synchronizer.coroutineScope
-            wallet.synchronizer.processorInfo.collectWith(scope, { update ->
-                sendEvent("UpdateEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putInt("lastDownloadedHeight", update.lastDownloadedHeight)
-                    args.putInt("lastScannedHeight", update.lastScannedHeight)
-                    args.putInt("scanProgress", update.scanProgress)
-                    args.putInt("networkBlockHeight", update.networkBlockHeight)
-                }
-            })
-            wallet.synchronizer.status.collectWith(scope, { status ->
-                sendEvent("StatusEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putString("name", status.toString())
-                }
-            })
-            wallet.synchronizer.saplingBalances.collectWith(scope, { walletBalance ->
-                sendEvent("BalanceEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putString("availableZatoshi", walletBalance.availableZatoshi.toString())
-                    args.putString("totalZatoshi", walletBalance.totalZatoshi.toString())
-                }
-            })
-            // add 'distinctUntilChanged' to filter by events that represent changes in txs, rather than each poll
-            wallet.synchronizer.clearedTransactions.distinctUntilChanged().collectWith(scope, { txList ->
-                sendEvent("TransactionEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putBoolean("hasChanged", true)
-                    args.putInt("transactionCount", txList.count())
-                }
-            })
-            wallet.isStarted = true
         }
-        "success"
     }
 
-    @ReactMethod
-    fun stop(alias: String, promise: Promise) = promise.wrap {
-        val wallet = getWallet(alias)
-        wallet.synchronizer.stop()
-        synchronizerMap.remove(alias)
-        "success"
+    fun inRange(tx: TransactionOverview, first: Int, last: Int): Boolean {
+        if (tx.minedHeight != null && tx.minedHeight!!.value >= first.toLong() && tx.minedHeight!!.value <= last.toLong()) {
+            return true
+        }
+        return false
     }
 
     @ReactMethod
     fun getTransactions(alias: String, first: Int, last: Int, promise: Promise) {
         val wallet = getWallet(alias)
-        moduleScope.launch {
-            promise.wrap {
-                val result = wallet.repository.findNewTransactions(first..last)
-                val nativeArray = Arguments.createArray()
 
-                for (i in 0..result.size - 1) {
-                    val map = Arguments.createMap()
-                    map.putString("value", result[i].value.toString())
-                    map.putInt("minedHeight", result[i].minedHeight)
-                    map.putInt("blockTimeInSeconds", result[i].blockTimeInSeconds.toInt())
-                    map.putString("rawTransactionId", result[i].rawTransactionId.toHexReversed())
-                    if (result[i].memo != null) map.putString("memo", result[i].memo?.decodeToString()?.trim('\u0000', '\uFFFD'))
-                    if (result[i].toAddress != null) map.putString("toAddress", result[i].toAddress)
-                    nativeArray.pushMap(map)
+        fun parseTx(tx: TransactionOverview): WritableMap {
+            val map = Arguments.createMap()
+            map.putString("value", tx.netValue.value.toString())
+            map.putInt("minedHeight", tx.minedHeight!!.value.toInt())
+            map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds.toInt())
+            map.putString("rawTransactionId", tx.rawId.byteArray.toHexReversed())
+            if (tx.isSentTransaction) {
+                val recipient = runBlocking { wallet.getRecipients(tx).first() }
+                if (recipient is TransactionRecipient.Address) {
+                    map.putString("toAddress", recipient.addressValue)
                 }
+            }
+            if (tx.memoCount > 0) {
+                val memos = runBlocking { wallet.getMemos(tx).take(tx.memoCount).toList() }
+                map.putArray("memos", Arguments.fromList(memos))
+            }
+            return map
+        }
 
-                nativeArray
+        moduleScope.launch {
+            val numTxs = wallet.getTransactionCount()
+            var txCount = 0
+            val nativeArray = Arguments.createArray()
+            if (numTxs == 0) {
+                promise.resolve(nativeArray)
+                this.coroutineContext.cancel()
+            }
+            runBlocking {
+                wallet.transactions.onEach {
+                    it.forEach { tx ->
+                        run {
+                            txCount++
+                            if (inRange(tx, first, last)) nativeArray.pushMap(parseTx(tx))
+                        }
+                        if (numTxs == txCount) {
+                            cancel()
+                            promise.resolve(nativeArray)
+                        }
+                    }
+                }.collect()
             }
         }
     }
 
     @ReactMethod
-    fun rescan(alias: String, height: Int, promise: Promise) {
+    fun rescan(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
         moduleScope.launch {
-            wallet.synchronizer.rewindToNearestHeight(height)
+            runBlocking {
+                wallet.rewindToNearestHeight(wallet.latestBirthdayHeight, true)
+                promise.resolve(null)
+            }
         }
     }
 
     @ReactMethod
     fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
-        var keys = runBlocking { DerivationTool.deriveUnifiedViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
-        val map = Arguments.createMap()
-        map.putString("extfvk", keys.extfvk)
-        map.putString("extpub", keys.extpub)
-        promise.resolve(map)
-    }
-
-    @ReactMethod
-    fun deriveSpendingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        runBlocking { DerivationTool.deriveSpendingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet))[0] }
+        var keys = runBlocking { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }
+        promise.resolve(keys.encoding)
     }
 
     //
     // Properties
     //
 
-
     @ReactMethod
     fun getLatestNetworkHeight(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
-        wallet.synchronizer.latestHeight
+        return@wrap wallet.latestHeight
     }
 
     @ReactMethod
-    fun getBirthdayHeight(host: String, port: Int, promise: Promise) = promise.wrap {
-        var lightwalletService = LightWalletGrpcService(reactApplicationContext, host, port)
-        val height = lightwalletService?.getLatestBlockHeight()
-        lightwalletService?.shutdown()
-        height
+    fun getBirthdayHeight(host: String, port: Int, promise: Promise) {
+        moduleScope.launch {
+            promise.wrap {
+                var endpoint = LightWalletEndpoint(host, port, true)
+                var lightwalletService = LightWalletClient.new(reactApplicationContext, endpoint)
+                return@wrap when (val response = lightwalletService.getLatestBlockHeight()) {
+                    is Response.Success -> {
+                        response.result.value.toInt()
+                    }
+
+                    is Response.Failure -> {
+                        throw LightWalletException.DownloadBlockException(
+                            response.code,
+                            response.description,
+                            response.toThrowable(),
+                        )
+                    }
+                }
+            }
+        }
     }
 
     @ReactMethod
-    fun getShieldedBalance(alias: String, promise: Promise) = promise.wrap {
+    fun getBalance(alias: String, promise: Promise) = promise.wrap {
         val wallet = getWallet(alias)
+        var availableZatoshi = Zatoshi(0L)
+        var totalZatoshi = Zatoshi(0L)
+
+        val transparentBalances = wallet.transparentBalances.value
+        availableZatoshi = availableZatoshi.plus(transparentBalances?.available ?: Zatoshi(0L))
+        totalZatoshi = totalZatoshi.plus(transparentBalances?.total ?: Zatoshi(0L))
+        val saplingBalances = wallet.saplingBalances.value
+        availableZatoshi = availableZatoshi.plus(saplingBalances?.available ?: Zatoshi(0L))
+        totalZatoshi = totalZatoshi.plus(saplingBalances?.total ?: Zatoshi(0L))
+        val orchardBalances = wallet.orchardBalances.value
+        availableZatoshi = availableZatoshi.plus(orchardBalances?.available ?: Zatoshi(0L))
+        totalZatoshi = totalZatoshi.plus(orchardBalances?.total ?: Zatoshi(0L))
+
         val map = Arguments.createMap()
-        map.putString("totalZatoshi", wallet.synchronizer.saplingBalances.value.totalZatoshi.toString(10))
-        map.putString("availableZatoshi", wallet.synchronizer.saplingBalances.value.availableZatoshi.toString(10))
-        map
+        map.putString("totalZatoshi", totalZatoshi.value.toString())
+        map.putString("availableZatoshi", availableZatoshi.value.toString())
+        return@wrap map
     }
 
     @ReactMethod
-    fun spendToAddress(
+    fun sendToAddress(
         alias: String,
         zatoshi: String,
         toAddress: String,
-        memo: String,
-        fromAccountIndex: Int,
-        spendingKey: String,
-        promise: Promise
+        memo: String = "",
+        seed: String,
+        promise: Promise,
     ) {
         val wallet = getWallet(alias)
-        wallet.synchronizer.coroutineScope.launch {
+        wallet.coroutineScope.launch {
+            var seedPhrase = SeedPhrase.new(seed)
+            val usk = runBlocking { DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT) }
             try {
-                wallet.synchronizer.sendToAddress(
-                    spendingKey,
-                    zatoshi.toLong(),
+                val internalId = wallet.sendToAddress(
+                    usk,
+                    Zatoshi(zatoshi.toLong()),
                     toAddress,
                     memo,
-                    fromAccountIndex
-                ).collectWith(wallet.synchronizer.coroutineScope) {tx ->
-                    // this block is called repeatedly for each update to the pending transaction, including all 10 confirmations
-                    // the promise either shouldn't be used (and rely on events instead) or it can be resolved once the transaction is submitted to the network or mined
-                    if (tx.isSubmitSuccess()) { // alternatively use it.isMined() but be careful about making a promise that never resolves!
-                        val map = Arguments.createMap()
-                        map.putString("txId", tx.rawTransactionId?.toHexReversed())
-                        map.putString("raw", tx.raw?.toHexReversed())
-                        promise.resolve(map)
-                    } else if (tx.isFailure()) {
-                        val map = Arguments.createMap()
-                        if (tx.errorMessage != null) map.putString("errorMessage", tx.errorMessage)
-                        if (tx.errorCode != null) map.putString("errorCode", tx.errorCode.toString())
-                        promise.resolve(map)
-                    }
-                }
+                )
+                val tx = runBlocking { wallet.transactions.flatMapConcat { list -> flowOf(*list.toTypedArray()) } }.firstOrNull { item -> item.id == internalId }
+                if (tx == null) throw Exception("transaction failed")
+
+                val map = Arguments.createMap()
+                map.putString("txId", tx.rawId.toString())
+                if (tx.raw != null) map.putString("raw", tx.raw.toString())
+                promise.resolve(map)
             } catch (t: Throwable) {
                 promise.reject("Err", t)
             }
         }
-
     }
 
     //
@@ -239,40 +255,29 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     //
 
     @ReactMethod
-    fun deriveShieldedAddress(viewingKey: String, network: String = "mainnet", promise: Promise) = promise.wrap {
-        runBlocking { DerivationTool.deriveShieldedAddress(viewingKey, networks.getOrDefault(network, ZcashNetwork.Mainnet)) }
-    }
-
-    @ReactMethod
-    fun isValidShieldedAddress(address: String, network: String, promise: Promise) {
+    fun deriveUnifiedAddress(alias: String, promise: Promise) = promise.wrap {
+        val wallet = getWallet(alias)
         moduleScope.launch {
-            promise.wrap {
-                var isValid = false
-                val wallets = synchronizerMap.asIterable()
-            for (wallet in wallets) {
-                if (wallet.value.synchronizer.network.networkName == network) {
-                  isValid = wallet.value.synchronizer.isValidShieldedAddr(address)
-                  break
-                }
-              }
-              isValid
+            runBlocking {
+                var unifiedAddress = wallet.getUnifiedAddress(Account(0))
+                promise.resolve(unifiedAddress)
             }
         }
     }
 
     @ReactMethod
-    fun isValidTransparentAddress(address: String, network: String, promise: Promise) {
+    fun isValidAddress(address: String, network: String, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
-              var isValid = false
-              val wallets = synchronizerMap.asIterable()
-              for (wallet in wallets) {
-                if (wallet.value.synchronizer.network.networkName == network) {
-                  isValid = wallet.value.synchronizer.isValidTransparentAddr(address)
-                  break
+                var isValid = false
+                val wallets = synchronizerMap.asIterable()
+                for (wallet in wallets) {
+                    if (wallet.value.network.networkName == network) {
+                        isValid = wallet.value.isValidAddress(address)
+                        break
+                    }
                 }
-              }
-              isValid
+                return@wrap isValid
             }
         }
     }
@@ -284,12 +289,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     /**
      * Retrieve wallet object from synchronizer map
      */
-    private fun getWallet(alias: String): WalletSynchronizer {
+    private fun getWallet(alias: String): SdkSynchronizer {
         val wallet = synchronizerMap.get(alias)
         if (wallet == null) throw Exception("Wallet not found")
         return wallet
     }
-
 
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
@@ -311,10 +315,10 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     inline fun ByteArray.toHexReversed(): String {
-      val sb = StringBuilder(size * 2)
-      var i = size - 1
-      while (i >= 0)
-        sb.append(String.format("%02x", this[i--]))
-      return sb.toString()
+        val sb = StringBuilder(size * 2)
+        var i = size - 1
+        while (i >= 0)
+            sb.append(String.format("%02x", this[i--]))
+        return sb.toString()
     }
 }
