@@ -1,5 +1,11 @@
 # React Native Zcash
 
+## 0.4.0 (2023-09-04)
+
+- changed: Upgrade zcash-android-sdk to v1.20.0-beta01
+- changed: Upgrade ZcashLightClientKit to v0.22.0-beta
+- changed: Repackage `KoyTool` and `AddressTool` methods synchronizer-independent `Tools`
+
 ## 0.3.5 (2023-08-03)
 
 - fixed: Update our default Kotlin version to be compatible with React Native v0.72.
