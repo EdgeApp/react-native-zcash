@@ -34,7 +34,7 @@ const networks: { [pluginId: string]: Options } = {
     serviceProtoPath: path.join(__dirname, '/protos/zcash/service.proto'),
     checkpointsPath: path.join(
       __dirname,
-      '../android/src/main/assets/saplingtree/mainnet/'
+      '../android/src/main/assets/co.electriccoin.zcash/checkpoint/mainnet/'
     ),
     serverUrl: 'mainnet.lightwalletd.com:9067',
     packagePath: 'cash.z.wallet.sdk.rpc',
