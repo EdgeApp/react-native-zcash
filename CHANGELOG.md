@@ -1,5 +1,13 @@
 # React Native Zcash
 
+## 0.4.1 (2023-09-13)
+
+- fixed: Update checkpoint path (Android)
+- fixed: Fix view key derivation (Android)
+- fixed: Fix `getTransactions` early exit (Android)
+- fixed: Fix hex string handling (Android)
+- fixed: Fix recipient address availability assumption (iOS)
+
 ## 0.4.0 (2023-09-04)
 
 - changed: Upgrade zcash-android-sdk to v1.20.0-beta01
