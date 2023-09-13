@@ -278,11 +278,7 @@ class RNZcash: RCTEventEmitter {
             if tx.memoCount > 0 {
               let memos = (try? await wallet.synchronizer.getMemos(for: tx)) ?? []
               let textMemos = memos.compactMap {
-                if case let .text(memo) = $0 {
-                  return memo.string
-                } else {
-                  return nil
-                }
+                return $0.toString()
               }
               confTx.memo = textMemos
             }
