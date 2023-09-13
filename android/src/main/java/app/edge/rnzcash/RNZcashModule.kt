@@ -126,7 +126,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             val nativeArray = Arguments.createArray()
             if (numTxs == 0) {
                 promise.resolve(nativeArray)
-                this.coroutineContext.cancel()
+                return@launch
             }
             runBlocking {
                 wallet.transactions.onEach {
