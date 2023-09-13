@@ -157,8 +157,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
-        var keys = runBlocking { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }
+    fun deriveViewingKey(seed: String, network: String = "mainnet", promise: Promise) {
+        var seedPhrase = SeedPhrase.new(seed)
+        var keys = runBlocking { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedPhrase.toByteArray(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }
         promise.resolve(keys.encoding)
     }
 
