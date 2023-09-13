@@ -11,7 +11,7 @@ struct ConfirmedTx {
   var rawTransactionId: String
   var blockTimeInSeconds: Int
   var value: String
-  var memo: Array<String>?
+  var memos: Array<String>?
   var dictionary: [String: Any?] {
     return [
       "minedHeight": minedHeight,
@@ -19,7 +19,7 @@ struct ConfirmedTx {
       "rawTransactionId": rawTransactionId,
       "blockTimeInSeconds": blockTimeInSeconds,
       "value": value,
-      "memo": memo,
+      "memos": memos ?? [],
     ]
   }
   var nsDictionary: NSDictionary {
@@ -280,7 +280,7 @@ class RNZcash: RCTEventEmitter {
               let textMemos = memos.compactMap {
                 return $0.toString()
               }
-              confTx.memo = textMemos
+              confTx.memos = textMemos
             }
             out.append(confTx.nsDictionary)
           }
