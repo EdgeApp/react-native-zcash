@@ -242,8 +242,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 if (tx == null) throw Exception("transaction failed")
 
                 val map = Arguments.createMap()
-                map.putString("txId", tx.rawId.toString())
-                if (tx.raw != null) map.putString("raw", tx.raw.toString())
+                map.putString("txId", tx.rawId.byteArray.toHexReversed())
+                if (tx.raw != null) map.putString("raw", tx.raw?.byteArray?.toHex())
                 promise.resolve(map)
             } catch (t: Throwable) {
                 promise.reject("Err", t)
