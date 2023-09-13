@@ -270,7 +270,9 @@ class RNZcash: RCTEventEmitter {
                     return nil
                   }
                 }
-                confTx.toAddress = addresses.first!.stringEncoded
+                if addresses.count > 0 {
+                  confTx.toAddress = addresses.first!.stringEncoded
+                }
               }
             }
             if tx.memoCount > 0 {

@@ -126,7 +126,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             val nativeArray = Arguments.createArray()
             if (numTxs == 0) {
                 promise.resolve(nativeArray)
-                this.coroutineContext.cancel()
+                return@launch
             }
             runBlocking {
                 wallet.transactions.onEach {
@@ -157,8 +157,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun deriveViewingKey(seedBytesHex: String, network: String = "mainnet", promise: Promise) {
-        var keys = runBlocking { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedBytesHex.fromHex(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }
+    fun deriveViewingKey(seed: String, network: String = "mainnet", promise: Promise) {
+        var seedPhrase = SeedPhrase.new(seed)
+        var keys = runBlocking { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedPhrase.toByteArray(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }
         promise.resolve(keys.encoding)
     }
 
@@ -241,8 +242,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 if (tx == null) throw Exception("transaction failed")
 
                 val map = Arguments.createMap()
-                map.putString("txId", tx.rawId.toString())
-                if (tx.raw != null) map.putString("raw", tx.raw.toString())
+                map.putString("txId", tx.rawId.byteArray.toHexReversed())
+                if (tx.raw != null) map.putString("raw", tx.raw?.byteArray?.toHex())
                 promise.resolve(map)
             } catch (t: Throwable) {
                 promise.reject("Err", t)
