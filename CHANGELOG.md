@@ -1,5 +1,10 @@
 # React Native Zcash
 
+## 0.4.2 (2023-09-14)
+
+- changed: Always return memos array with transactions
+- changed: Simplify compactMap transform
+
 ## 0.4.1 (2023-09-13)
 
 - fixed: Update checkpoint path (Android)
