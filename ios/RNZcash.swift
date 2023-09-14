@@ -11,7 +11,7 @@ struct ConfirmedTx {
   var rawTransactionId: String
   var blockTimeInSeconds: Int
   var value: String
-  var memo: Array<String>?
+  var memos: Array<String>?
   var dictionary: [String: Any?] {
     return [
       "minedHeight": minedHeight,
@@ -19,7 +19,7 @@ struct ConfirmedTx {
       "rawTransactionId": rawTransactionId,
       "blockTimeInSeconds": blockTimeInSeconds,
       "value": value,
-      "memo": memo,
+      "memos": memos ?? [],
     ]
   }
   var nsDictionary: NSDictionary {
@@ -278,13 +278,9 @@ class RNZcash: RCTEventEmitter {
             if tx.memoCount > 0 {
               let memos = (try? await wallet.synchronizer.getMemos(for: tx)) ?? []
               let textMemos = memos.compactMap {
-                if case let .text(memo) = $0 {
-                  return memo.string
-                } else {
-                  return nil
-                }
+                return $0.toString()
               }
-              confTx.memo = textMemos
+              confTx.memos = textMemos
             }
             out.append(confTx.nsDictionary)
           }

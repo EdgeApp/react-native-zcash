@@ -79,5 +79,5 @@ export interface ConfirmedTransaction {
   minedHeight: number
   value: string
   toAddress?: string
-  memo?: string
+  memos: string[]
 }

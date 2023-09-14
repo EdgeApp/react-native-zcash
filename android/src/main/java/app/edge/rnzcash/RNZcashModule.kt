@@ -116,6 +116,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             if (tx.memoCount > 0) {
                 val memos = runBlocking { wallet.getMemos(tx).take(tx.memoCount).toList() }
                 map.putArray("memos", Arguments.fromList(memos))
+            } else {
+                map.putArray("memos", Arguments.createArray())
             }
             return map
         }
