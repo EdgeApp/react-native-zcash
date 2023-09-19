@@ -258,7 +258,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     //
 
     @ReactMethod
-    fun deriveUnifiedAddress(alias: String, promise: Promise) = promise.wrap {
+    fun deriveUnifiedAddress(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
         moduleScope.launch {
             runBlocking {
