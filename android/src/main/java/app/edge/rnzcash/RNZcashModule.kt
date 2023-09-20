@@ -212,25 +212,29 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun getBalance(alias: String, promise: Promise) = promise.wrap {
+    fun getBalance(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
         var availableZatoshi = Zatoshi(0L)
         var totalZatoshi = Zatoshi(0L)
 
-        val transparentBalances = wallet.transparentBalances.value
-        availableZatoshi = availableZatoshi.plus(transparentBalances?.available ?: Zatoshi(0L))
-        totalZatoshi = totalZatoshi.plus(transparentBalances?.total ?: Zatoshi(0L))
-        val saplingBalances = wallet.saplingBalances.value
-        availableZatoshi = availableZatoshi.plus(saplingBalances?.available ?: Zatoshi(0L))
-        totalZatoshi = totalZatoshi.plus(saplingBalances?.total ?: Zatoshi(0L))
-        val orchardBalances = wallet.orchardBalances.value
-        availableZatoshi = availableZatoshi.plus(orchardBalances?.available ?: Zatoshi(0L))
-        totalZatoshi = totalZatoshi.plus(orchardBalances?.total ?: Zatoshi(0L))
+        wallet.coroutineScope.launch {
+            wallet.coroutineScope.async { wallet.refreshAllBalances() }.await()
+        
+            val transparentBalances = wallet.transparentBalances.value
+            availableZatoshi = availableZatoshi.plus(transparentBalances?.available ?: Zatoshi(0L))
+            totalZatoshi = totalZatoshi.plus(transparentBalances?.total ?: Zatoshi(0L))
+            val saplingBalances = wallet.saplingBalances.value
+            availableZatoshi = availableZatoshi.plus(saplingBalances?.available ?: Zatoshi(0L))
+            totalZatoshi = totalZatoshi.plus(saplingBalances?.total ?: Zatoshi(0L))
+            val orchardBalances = wallet.orchardBalances.value
+            availableZatoshi = availableZatoshi.plus(orchardBalances?.available ?: Zatoshi(0L))
+            totalZatoshi = totalZatoshi.plus(orchardBalances?.total ?: Zatoshi(0L))
 
-        val map = Arguments.createMap()
-        map.putString("totalZatoshi", totalZatoshi.value.toString())
-        map.putString("availableZatoshi", availableZatoshi.value.toString())
-        return@wrap map
+            val map = Arguments.createMap()
+            map.putString("totalZatoshi", totalZatoshi.value.toString())
+            map.putString("availableZatoshi", availableZatoshi.value.toString())
+            promise.resolve(map)
+        }
     }
 
     @ReactMethod
