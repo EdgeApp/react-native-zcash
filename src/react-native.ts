@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 
 import {
+  Addresses,
   BlockRange,
   ConfirmedTransaction,
   InitializerConfig,
@@ -72,7 +73,7 @@ export class Synchronizer {
     )
   }
 
-  async deriveUnifiedAddress(): Promise<string> {
+  async deriveUnifiedAddress(): Promise<Addresses> {
     const result = await RNZcash.deriveUnifiedAddress(this.alias)
     return result
   }
