@@ -14,6 +14,7 @@ import co.electriccoin.lightwallet.client.model.Response
 import co.electriccoin.lightwallet.client.new
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.*
@@ -97,53 +98,68 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         return false
     }
 
-    @ReactMethod
-    fun getTransactions(alias: String, first: Int, last: Int, promise: Promise) {
-        val wallet = getWallet(alias)
+    suspend fun collectTxs(wallet: SdkSynchronizer, limit: Int): List<TransactionOverview> {
+        val allTxs = mutableListOf<TransactionOverview>()
+        val job = wallet.coroutineScope.launch {
+            wallet.transactions.collect { txList ->
+                txList.forEach { tx ->
+                    allTxs.add(tx)
+                }
+                if (allTxs.size == limit) {
+                    cancel()
+                }
+            }
+        }
+        job.join()
 
-        fun parseTx(tx: TransactionOverview): WritableMap {
-            val map = Arguments.createMap()
+        return allTxs
+    }
+
+    suspend fun parseTx(wallet: SdkSynchronizer, tx: TransactionOverview): WritableMap {
+        val map = Arguments.createMap()
+        val job = wallet.coroutineScope.launch {
             map.putString("value", tx.netValue.value.toString())
             map.putInt("minedHeight", tx.minedHeight!!.value.toInt())
             map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds.toInt())
             map.putString("rawTransactionId", tx.rawId.byteArray.toHexReversed())
             if (tx.isSentTransaction) {
-                val recipient = runBlocking { wallet.getRecipients(tx).first() }
+                val recipient = wallet.getRecipients(tx).first()
                 if (recipient is TransactionRecipient.Address) {
                     map.putString("toAddress", recipient.addressValue)
                 }
             }
             if (tx.memoCount > 0) {
-                val memos = runBlocking { wallet.getMemos(tx).take(tx.memoCount).toList() }
+                val memos = wallet.getMemos(tx).take(tx.memoCount).toList()
                 map.putArray("memos", Arguments.fromList(memos))
             } else {
                 map.putArray("memos", Arguments.createArray())
             }
-            return map
         }
+        job.join()
+        return map
+    }
+
+    @ReactMethod
+    fun getTransactions(alias: String, first: Int, last: Int, promise: Promise) {
+        val wallet = getWallet(alias)
 
         wallet.coroutineScope.launch {
-            val numTxs = wallet.getTransactionCount()
-            var txCount = 0
+            val numTxs = async { wallet.getTransactionCount() }.await()
             val nativeArray = Arguments.createArray()
             if (numTxs == 0) {
                 promise.resolve(nativeArray)
                 return@launch
             }
-            runBlocking {
-                wallet.transactions.onEach {
-                    it.forEach { tx ->
-                        run {
-                            txCount++
-                            if (inRange(tx, first, last)) nativeArray.pushMap(parseTx(tx))
-                        }
-                        if (numTxs == txCount) {
-                            cancel()
-                            promise.resolve(nativeArray)
-                        }
-                    }
-                }.collect()
-            }
+
+            val allTxs = async { collectTxs(wallet, numTxs) }.await()
+            val filteredTxs = allTxs.filter { tx -> inRange(tx, first, last) }
+
+            filteredTxs.map { tx -> launch {
+                val parsedTx = parseTx(wallet, tx)
+                nativeArray.pushMap(parsedTx)
+            } }.forEach { it.join() }
+
+            promise.resolve(nativeArray)
         }
     }
 
