@@ -19,7 +19,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlin.coroutines.EmptyCoroutineContext
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
@@ -52,21 +51,23 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 val wallet = getWallet(alias)
                 val scope = wallet.coroutineScope
                 wallet.processorInfo.collectWith(scope, { update ->
-                    var lastDownloadedHeight = runBlocking { wallet.processor.downloader.getLastDownloadedHeight() }
-                    if (lastDownloadedHeight == null) lastDownloadedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+                    scope.launch {
+                        var lastDownloadedHeight = this.async { wallet.processor.downloader.getLastDownloadedHeight() }.await()
+                        if (lastDownloadedHeight == null) lastDownloadedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
 
-                    var lastScannedHeight = update.lastSyncedHeight
-                    if (lastScannedHeight == null) lastScannedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+                        var lastScannedHeight = update.lastSyncedHeight
+                        if (lastScannedHeight == null) lastScannedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
 
-                    var networkBlockHeight = update.networkBlockHeight
-                    if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+                        var networkBlockHeight = update.networkBlockHeight
+                        if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
 
-                    sendEvent("UpdateEvent") { args ->
-                        args.putString("alias", alias)
-                        args.putInt("lastDownloadedHeight", lastDownloadedHeight.value.toInt())
-                        args.putInt("lastScannedHeight", lastScannedHeight.value.toInt())
-                        args.putInt("scanProgress", wallet.processor.progress.value.toPercentage())
-                        args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
+                        sendEvent("UpdateEvent") { args ->
+                            args.putString("alias", alias)
+                            args.putInt("lastDownloadedHeight", lastDownloadedHeight.value.toInt())
+                            args.putInt("lastScannedHeight", lastScannedHeight.value.toInt())
+                            args.putInt("scanProgress", wallet.processor.progress.value.toPercentage())
+                            args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
+                        }
                     }
                 })
                 wallet.status.collectWith(scope, { status ->
@@ -82,13 +83,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stop(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            runBlocking {
-                wallet.close()
-                synchronizerMap.remove(alias)
-                promise.resolve(null)
-            }
-        }
+        wallet.close()
+        synchronizerMap.remove(alias)
+        promise.resolve(null)
     }
 
     fun inRange(tx: TransactionOverview, first: Int, last: Int): Boolean {
@@ -167,18 +164,18 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun rescan(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            runBlocking {
-                wallet.rewindToNearestHeight(wallet.latestBirthdayHeight, true)
-                promise.resolve(null)
-            }
+            wallet.coroutineScope.async { wallet.rewindToNearestHeight(wallet.latestBirthdayHeight, true) }.await()
+            promise.resolve(null)
         }
     }
 
     @ReactMethod
     fun deriveViewingKey(seed: String, network: String = "mainnet", promise: Promise) {
         var seedPhrase = SeedPhrase.new(seed)
-        var keys = runBlocking { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedPhrase.toByteArray(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }
-        promise.resolve(keys.encoding)
+        moduleScope.launch {
+            var keys = moduleScope.async { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedPhrase.toByteArray(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }.await()
+            promise.resolve(keys.encoding)
+        }
     }
 
     //
@@ -248,7 +245,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
             var seedPhrase = SeedPhrase.new(seed)
-            val usk = runBlocking { DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT) }
+            val usk = wallet.coroutineScope.async { DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT) }.await()
             try {
                 val internalId = wallet.sendToAddress(
                     usk,
@@ -256,7 +253,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     toAddress,
                     memo,
                 )
-                val tx = runBlocking { wallet.transactions.flatMapConcat { list -> flowOf(*list.toTypedArray()) } }.firstOrNull { item -> item.id == internalId }
+                val tx = wallet.coroutineScope.async { wallet.transactions.flatMapConcat { list -> flowOf(*list.toTypedArray()) } }.await().firstOrNull { item -> item.id == internalId }
                 if (tx == null) throw Exception("transaction failed")
 
                 val map = Arguments.createMap()
@@ -277,10 +274,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun deriveUnifiedAddress(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            runBlocking {
-                var unifiedAddress = wallet.getUnifiedAddress(Account(0))
+                var unifiedAddress = wallet.coroutineScope.async { wallet.getUnifiedAddress(Account(0)) }.await()
                 promise.resolve(unifiedAddress)
-            }
         }
     }
 
