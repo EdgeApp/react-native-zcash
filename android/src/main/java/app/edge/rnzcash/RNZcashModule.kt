@@ -219,7 +219,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
         wallet.coroutineScope.launch {
             wallet.coroutineScope.async { wallet.refreshAllBalances() }.await()
-        
+
             val transparentBalances = wallet.transparentBalances.value
             availableZatoshi = availableZatoshi.plus(transparentBalances?.available ?: Zatoshi(0L))
             totalZatoshi = totalZatoshi.plus(transparentBalances?.total ?: Zatoshi(0L))
@@ -279,7 +279,14 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
                 var unifiedAddress = wallet.coroutineScope.async { wallet.getUnifiedAddress(Account(0)) }.await()
-                promise.resolve(unifiedAddress)
+                val saplingAddress = wallet.coroutineScope.async { wallet.getSaplingAddress(Account(0)) }.await()
+                val transparentAddress = wallet.coroutineScope.async { wallet.getTransparentAddress(Account(0)) }.await()
+
+                val map = Arguments.createMap()
+                map.putString("unifiedAddress", unifiedAddress)
+                map.putString("saplingAddress", saplingAddress)
+                map.putString("transparentAddress", transparentAddress)
+                promise.resolve(map)
         }
     }
 

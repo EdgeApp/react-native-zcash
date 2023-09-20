@@ -81,3 +81,9 @@ export interface ConfirmedTransaction {
   toAddress?: string
   memos: string[]
 }
+
+export interface Addresses {
+  unifiedAddress: string
+  saplingAddress: string
+  transparentAddress: string
+}

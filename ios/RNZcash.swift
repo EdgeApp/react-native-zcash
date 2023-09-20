@@ -405,7 +405,14 @@ class RNZcash: RCTEventEmitter {
       if let wallet = SynchronizerMap[alias] {
         do {
           let unifiedAddress = try await wallet.synchronizer.getUnifiedAddress(accountIndex: 0)
-          resolve(unifiedAddress.stringEncoded)
+          let saplingAddress = try await wallet.synchronizer.getSaplingAddress(accountIndex: 0)
+          let transparentAddress = try await wallet.synchronizer.getTransparentAddress(accountIndex: 0)
+          let addresses: NSDictionary = [
+            "unifiedAddress": unifiedAddress.stringEncoded,
+            "saplingAddress": saplingAddress.stringEncoded,
+            "transparentAddress": transparentAddress.stringEncoded
+          ]
+          resolve(addresses)
           return
         } catch {
           reject("deriveUnifiedAddress", "Failed to derive unified address", error)
