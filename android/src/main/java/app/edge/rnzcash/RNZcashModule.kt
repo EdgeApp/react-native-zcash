@@ -81,7 +81,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stop(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
-        moduleScope.launch {
+        wallet.coroutineScope.launch {
             runBlocking {
                 wallet.close()
                 synchronizerMap.remove(alias)
@@ -122,7 +122,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             return map
         }
 
-        moduleScope.launch {
+        wallet.coroutineScope.launch {
             val numTxs = wallet.getTransactionCount()
             var txCount = 0
             val nativeArray = Arguments.createArray()
@@ -150,7 +150,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun rescan(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
-        moduleScope.launch {
+        wallet.coroutineScope.launch {
             runBlocking {
                 wallet.rewindToNearestHeight(wallet.latestBirthdayHeight, true)
                 promise.resolve(null)
@@ -260,7 +260,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun deriveUnifiedAddress(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
-        moduleScope.launch {
+        wallet.coroutineScope.launch {
             runBlocking {
                 var unifiedAddress = wallet.getUnifiedAddress(Account(0))
                 promise.resolve(unifiedAddress)
