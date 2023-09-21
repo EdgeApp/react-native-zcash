@@ -1,5 +1,12 @@
 # React Native Zcash
 
+## 0.5.0 (2023-09-20)
+
+- changed: `deriveUnifiedAddress` will now return all three address types
+- changed: Replace `runBlocking` with async/await (Android)
+- fixed: Rewrite `getTransactions` (Android)
+- fixed: Force balance refresh before grabbing balances in `getBalance` (workaround for bug in SDK) (Android)
+
 ## 0.4.2 (2023-09-14)
 
 - changed: Always return memos array with transactions
