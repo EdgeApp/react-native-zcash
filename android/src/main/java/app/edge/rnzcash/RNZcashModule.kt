@@ -50,32 +50,40 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 }
                 val wallet = getWallet(alias)
                 val scope = wallet.coroutineScope
-                wallet.processorInfo.collectWith(scope, { update ->
+                wallet.processorInfo.collectWith(scope) { update ->
                     scope.launch {
-                        var lastDownloadedHeight = this.async { wallet.processor.downloader.getLastDownloadedHeight() }.await()
-                        if (lastDownloadedHeight == null) lastDownloadedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+                        var lastDownloadedHeight =
+                            this.async { wallet.processor.downloader.getLastDownloadedHeight() }
+                                .await()
+                        if (lastDownloadedHeight == null) lastDownloadedHeight =
+                            BlockHeight.new(wallet.network, birthdayHeight.toLong())
 
                         var lastScannedHeight = update.lastSyncedHeight
-                        if (lastScannedHeight == null) lastScannedHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+                        if (lastScannedHeight == null) lastScannedHeight =
+                            BlockHeight.new(wallet.network, birthdayHeight.toLong())
 
                         var networkBlockHeight = update.networkBlockHeight
-                        if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+                        if (networkBlockHeight == null) networkBlockHeight =
+                            BlockHeight.new(wallet.network, birthdayHeight.toLong())
 
                         sendEvent("UpdateEvent") { args ->
                             args.putString("alias", alias)
                             args.putInt("lastDownloadedHeight", lastDownloadedHeight.value.toInt())
                             args.putInt("lastScannedHeight", lastScannedHeight.value.toInt())
-                            args.putInt("scanProgress", wallet.processor.progress.value.toPercentage())
+                            args.putInt(
+                                "scanProgress",
+                                wallet.processor.progress.value.toPercentage()
+                            )
                             args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
                         }
                     }
-                })
-                wallet.status.collectWith(scope, { status ->
+                }
+                wallet.status.collectWith(scope) { status ->
                     sendEvent("StatusEvent") { args ->
                         args.putString("alias", alias)
                         args.putString("name", status.toString())
                     }
-                })
+                }
                 return@wrap null
             }
         }
