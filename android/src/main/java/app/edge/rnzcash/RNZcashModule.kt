@@ -2,6 +2,7 @@ package app.edge.rnzcash
 
 import cash.z.ecc.android.sdk.SdkSynchronizer
 import cash.z.ecc.android.sdk.Synchronizer
+import cash.z.ecc.android.sdk.WalletInitMode
 import cash.z.ecc.android.sdk.exception.LightWalletException
 import cash.z.ecc.android.sdk.ext.*
 import cash.z.ecc.android.sdk.internal.*
@@ -38,43 +39,32 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     override fun getName() = "RNZcash"
 
     @ReactMethod
-    fun initialize(seed: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
+    fun initialize(seed: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, newWallet: Boolean, promise: Promise) =
         moduleScope.launch {
             promise.wrap {
                 val network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
                 val endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
                 val seedPhrase = SeedPhrase.new(seed)
+                val initMode = if (newWallet) WalletInitMode.NewWallet else WalletInitMode.ExistingWallet
                 if (!synchronizerMap.containsKey(alias)) {
-                    synchronizerMap[alias] = Synchronizer.new(reactApplicationContext, network, alias, endpoint, seedPhrase.toByteArray(), BlockHeight.new(network, birthdayHeight.toLong())) as SdkSynchronizer
+                    synchronizerMap[alias] = Synchronizer.new(reactApplicationContext, network, alias, endpoint, seedPhrase.toByteArray(), BlockHeight.new(network, birthdayHeight.toLong()), initMode) as SdkSynchronizer
                 }
                 val wallet = getWallet(alias)
                 val scope = wallet.coroutineScope
-                wallet.processorInfo.collectWith(scope) { update ->
-                    scope.launch {
-                        var lastDownloadedHeight =
-                            this.async { wallet.processor.downloader.getLastDownloadedHeight() }
-                                .await()
-                        if (lastDownloadedHeight == null) lastDownloadedHeight =
-                            BlockHeight.new(wallet.network, birthdayHeight.toLong())
+                combine(wallet.progress, wallet.networkHeight) { progress, networkHeight ->
+                    return@combine mapOf("progress" to progress, "networkHeight" to networkHeight)
+                }.collectWith(scope) { map ->
+                    val progress = map["progress"] as PercentDecimal
+                    var networkBlockHeight = map["networkHeight"] as BlockHeight?
+                    if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
 
-                        var lastScannedHeight = update.lastSyncedHeight
-                        if (lastScannedHeight == null) lastScannedHeight =
-                            BlockHeight.new(wallet.network, birthdayHeight.toLong())
-
-                        var networkBlockHeight = update.networkBlockHeight
-                        if (networkBlockHeight == null) networkBlockHeight =
-                            BlockHeight.new(wallet.network, birthdayHeight.toLong())
-
-                        sendEvent("UpdateEvent") { args ->
-                            args.putString("alias", alias)
-                            args.putInt("lastDownloadedHeight", lastDownloadedHeight.value.toInt())
-                            args.putInt("lastScannedHeight", lastScannedHeight.value.toInt())
-                            args.putInt(
-                                "scanProgress",
-                                wallet.processor.progress.value.toPercentage()
-                            )
-                            args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
-                        }
+                    sendEvent("UpdateEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putInt(
+                            "scanProgress",
+                            progress.toPercentage()
+                        )
+                        args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
                     }
                 }
                 wallet.status.collectWith(scope) { status ->
@@ -96,7 +86,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun inRange(tx: TransactionOverview, first: Int, last: Int): Boolean {
-        if (tx.minedHeight != null && tx.minedHeight!!.value >= first.toLong() && tx.minedHeight!!.value <= last.toLong()) {
+        if (tx.minedHeight != null && tx.blockTimeEpochSeconds != null && tx.minedHeight!!.value >= first.toLong() && tx.minedHeight!!.value <= last.toLong()) {
             return true
         }
         return false
@@ -124,7 +114,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val job = wallet.coroutineScope.launch {
             map.putString("value", tx.netValue.value.toString())
             map.putInt("minedHeight", tx.minedHeight!!.value.toInt())
-            map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds.toInt())
+            map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds!!.toInt())
             map.putString("rawTransactionId", tx.rawId.byteArray.toHexReversed())
             if (tx.isSentTransaction) {
                 val recipient = wallet.getRecipients(tx).first()
@@ -171,7 +161,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun rescan(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            wallet.coroutineScope.async { wallet.rewindToNearestHeight(wallet.latestBirthdayHeight, true) }.await()
+            wallet.coroutineScope.async { wallet.rewindToNearestHeight(wallet.latestBirthdayHeight) }.await()
             promise.resolve(null)
         }
     }
@@ -265,9 +255,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     toAddress,
                     memo,
                 )
-                val tx = wallet.coroutineScope.async { wallet.transactions.flatMapConcat { list -> flowOf(*list.toTypedArray()) } }.await().firstOrNull { item -> item.id == internalId }
-                    ?: throw Exception("transaction failed")
-
+                val tx = wallet.coroutineScope.async { wallet.transactions.first().first() }.await()
                 val map = Arguments.createMap()
                 map.putString("txId", tx.rawId.byteArray.toHexReversed())
                 if (tx.raw != null) map.putString("raw", tx.raw?.byteArray?.toHex())
