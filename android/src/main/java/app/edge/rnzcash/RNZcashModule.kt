@@ -16,6 +16,7 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -31,10 +32,10 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
      *
      * In a real production app, we'd use the scope of the parent activity
      */
-    var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
-    var synchronizerMap = mutableMapOf<String, SdkSynchronizer>()
+    private var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
+    private var synchronizerMap = mutableMapOf<String, SdkSynchronizer>()
 
-    val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
+    private val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
 
     override fun getName() = "RNZcash"
 
@@ -42,11 +43,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun initialize(seed: String, birthdayHeight: Int, alias: String, networkName: String = "mainnet", defaultHost: String = "mainnet.lightwalletd.com", defaultPort: Int = 9067, promise: Promise) =
         moduleScope.launch {
             promise.wrap {
-                var network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
-                var endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
-                var seedPhrase = SeedPhrase.new(seed)
+                val network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
+                val endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
+                val seedPhrase = SeedPhrase.new(seed)
                 if (!synchronizerMap.containsKey(alias)) {
-                    synchronizerMap.set(alias, Synchronizer.new(reactApplicationContext, network, alias, endpoint, seedPhrase.toByteArray(), BlockHeight.new(network, birthdayHeight.toLong())) as SdkSynchronizer)
+                    synchronizerMap[alias] = Synchronizer.new(reactApplicationContext, network, alias, endpoint, seedPhrase.toByteArray(), BlockHeight.new(network, birthdayHeight.toLong())) as SdkSynchronizer
                 }
                 val wallet = getWallet(alias)
                 val scope = wallet.coroutineScope
@@ -96,14 +97,14 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         promise.resolve(null)
     }
 
-    fun inRange(tx: TransactionOverview, first: Int, last: Int): Boolean {
+    private fun inRange(tx: TransactionOverview, first: Int, last: Int): Boolean {
         if (tx.minedHeight != null && tx.minedHeight!!.value >= first.toLong() && tx.minedHeight!!.value <= last.toLong()) {
             return true
         }
         return false
     }
 
-    suspend fun collectTxs(wallet: SdkSynchronizer, limit: Int): List<TransactionOverview> {
+    private suspend fun collectTxs(wallet: SdkSynchronizer, limit: Int): List<TransactionOverview> {
         val allTxs = mutableListOf<TransactionOverview>()
         val job = wallet.coroutineScope.launch {
             wallet.transactions.collect { txList ->
@@ -120,7 +121,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         return allTxs
     }
 
-    suspend fun parseTx(wallet: SdkSynchronizer, tx: TransactionOverview): WritableMap {
+    private suspend fun parseTx(wallet: SdkSynchronizer, tx: TransactionOverview): WritableMap {
         val map = Arguments.createMap()
         val job = wallet.coroutineScope.launch {
             map.putString("value", tx.netValue.value.toString())
@@ -179,9 +180,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun deriveViewingKey(seed: String, network: String = "mainnet", promise: Promise) {
-        var seedPhrase = SeedPhrase.new(seed)
+        val seedPhrase = SeedPhrase.new(seed)
         moduleScope.launch {
-            var keys = moduleScope.async { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedPhrase.toByteArray(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }.await()
+            val keys = moduleScope.async { DerivationTool.getInstance().deriveUnifiedFullViewingKeys(seedPhrase.toByteArray(), networks.getOrDefault(network, ZcashNetwork.Mainnet), DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS)[0] }.await()
             promise.resolve(keys.encoding)
         }
     }
@@ -200,8 +201,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun getBirthdayHeight(host: String, port: Int, promise: Promise) {
         moduleScope.launch {
             promise.wrap {
-                var endpoint = LightWalletEndpoint(host, port, true)
-                var lightwalletService = LightWalletClient.new(reactApplicationContext, endpoint)
+                val endpoint = LightWalletEndpoint(host, port, true)
+                val lightwalletService = LightWalletClient.new(reactApplicationContext, endpoint)
                 return@wrap when (val response = lightwalletService.getLatestBlockHeight()) {
                     is Response.Success -> {
                         response.result.value.toInt()
@@ -245,6 +246,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @ReactMethod
     fun sendToAddress(
         alias: String,
@@ -256,7 +258,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            var seedPhrase = SeedPhrase.new(seed)
+            val seedPhrase = SeedPhrase.new(seed)
             val usk = wallet.coroutineScope.async { DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT) }.await()
             try {
                 val internalId = wallet.sendToAddress(
@@ -266,7 +268,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     memo,
                 )
                 val tx = wallet.coroutineScope.async { wallet.transactions.flatMapConcat { list -> flowOf(*list.toTypedArray()) } }.await().firstOrNull { item -> item.id == internalId }
-                if (tx == null) throw Exception("transaction failed")
+                    ?: throw Exception("transaction failed")
 
                 val map = Arguments.createMap()
                 map.putString("txId", tx.rawId.byteArray.toHexReversed())
@@ -286,7 +288,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     fun deriveUnifiedAddress(alias: String, promise: Promise) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-                var unifiedAddress = wallet.coroutineScope.async { wallet.getUnifiedAddress(Account(0)) }.await()
+                val unifiedAddress = wallet.coroutineScope.async { wallet.getUnifiedAddress(Account(0)) }.await()
                 val saplingAddress = wallet.coroutineScope.async { wallet.getSaplingAddress(Account(0)) }.await()
                 val transparentAddress = wallet.coroutineScope.async { wallet.getTransparentAddress(Account(0)) }.await()
 
@@ -323,9 +325,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
      * Retrieve wallet object from synchronizer map
      */
     private fun getWallet(alias: String): SdkSynchronizer {
-        val wallet = synchronizerMap.get(alias)
-        if (wallet == null) throw Exception("Wallet not found")
-        return wallet
+        return synchronizerMap[alias] ?: throw Exception("Wallet not found")
     }
 
     /**
@@ -347,7 +347,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             .emit(eventName, args)
     }
 
-    inline fun ByteArray.toHexReversed(): String {
+    private fun ByteArray.toHexReversed(): String {
         val sb = StringBuilder(size * 2)
         var i = size - 1
         while (i >= 0)
