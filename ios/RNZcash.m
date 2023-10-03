@@ -45,18 +45,6 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
-RCT_EXTERN_METHOD(getTransactions:(NSString *)alias
-:(NSInteger *)first
-:(NSInteger *)last
-resolver:(RCTPromiseResolveBlock)resolve
-rejecter:(RCTPromiseRejectBlock)reject
-)
-
-RCT_EXTERN_METHOD(getBalance:(NSString *)alias
-resolver:(RCTPromiseResolveBlock)resolve
-rejecter:(RCTPromiseRejectBlock)reject
-)
-
 RCT_EXTERN_METHOD(rescan:(NSString *)alias
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
