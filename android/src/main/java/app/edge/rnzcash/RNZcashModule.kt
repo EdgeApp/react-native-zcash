@@ -19,7 +19,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -73,6 +72,54 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                         args.putString("name", status.toString())
                     }
                 }
+                wallet.transactions.collectWith(scope) { txList ->
+                    scope.launch {
+                        val nativeArray = Arguments.createArray()
+                        txList.filter { tx -> tx.transactionState == TransactionState.Confirmed }.map { tx -> launch {
+                            val parsedTx = parseTx(wallet, tx)
+                            nativeArray.pushMap(parsedTx)
+                        } }.forEach { it.join() }
+
+                        sendEvent("TransactionEvent") { args ->
+                            args.putString("alias", alias)
+                            args.putArray(
+                                "transactions",
+                                nativeArray
+                            )
+                        }
+                    }
+                }
+                combine(wallet.transparentBalances, wallet.saplingBalances, wallet.orchardBalances) { transparentBalances, saplingBalances, orchardBalances ->
+                    return@combine mapOf("transparentBalances" to transparentBalances, "saplingBalances" to saplingBalances, "orchardBalances" to orchardBalances)
+                }.collectWith(scope) { map ->
+                    val transparentBalances = map["transparentBalances"]
+                    val saplingBalances = map["saplingBalances"]
+                    val orchardBalances = map["orchardBalances"]
+
+                    var availableZatoshi = Zatoshi(0L)
+                    var totalZatoshi = Zatoshi(0L)
+
+                    availableZatoshi = availableZatoshi.plus(transparentBalances?.available ?: Zatoshi(0L))
+                    totalZatoshi = totalZatoshi.plus(transparentBalances?.total ?: Zatoshi(0L))
+
+                    availableZatoshi = availableZatoshi.plus(saplingBalances?.available ?: Zatoshi(0L))
+                    totalZatoshi = totalZatoshi.plus(saplingBalances?.total ?: Zatoshi(0L))
+
+                    availableZatoshi = availableZatoshi.plus(orchardBalances?.available ?: Zatoshi(0L))
+                    totalZatoshi = totalZatoshi.plus(orchardBalances?.total ?: Zatoshi(0L))
+
+                    sendEvent("BalanceEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putString(
+                            "totalZatoshi",
+                            totalZatoshi.value.toString()
+                        )
+                        args.putString(
+                            "availableZatoshi",
+                            availableZatoshi.value.toString()
+                        )
+                    }
+                }
                 return@wrap null
             }
         }
@@ -83,30 +130,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         wallet.close()
         synchronizerMap.remove(alias)
         promise.resolve(null)
-    }
-
-    private fun inRange(tx: TransactionOverview, first: Int, last: Int): Boolean {
-        if (tx.minedHeight != null && tx.blockTimeEpochSeconds != null && tx.minedHeight!!.value >= first.toLong() && tx.minedHeight!!.value <= last.toLong()) {
-            return true
-        }
-        return false
-    }
-
-    private suspend fun collectTxs(wallet: SdkSynchronizer, limit: Int): List<TransactionOverview> {
-        val allTxs = mutableListOf<TransactionOverview>()
-        val job = wallet.coroutineScope.launch {
-            wallet.transactions.collect { txList ->
-                txList.forEach { tx ->
-                    allTxs.add(tx)
-                }
-                if (allTxs.size == limit) {
-                    cancel()
-                }
-            }
-        }
-        job.join()
-
-        return allTxs
     }
 
     private suspend fun parseTx(wallet: SdkSynchronizer, tx: TransactionOverview): WritableMap {
@@ -131,30 +154,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         }
         job.join()
         return map
-    }
-
-    @ReactMethod
-    fun getTransactions(alias: String, first: Int, last: Int, promise: Promise) {
-        val wallet = getWallet(alias)
-
-        wallet.coroutineScope.launch {
-            val numTxs = async { wallet.getTransactionCount() }.await()
-            val nativeArray = Arguments.createArray()
-            if (numTxs == 0) {
-                promise.resolve(nativeArray)
-                return@launch
-            }
-
-            val allTxs = async { collectTxs(wallet, numTxs) }.await()
-            val filteredTxs = allTxs.filter { tx -> inRange(tx, first, last) }
-
-            filteredTxs.map { tx -> launch {
-                val parsedTx = parseTx(wallet, tx)
-                nativeArray.pushMap(parsedTx)
-            } }.forEach { it.join() }
-
-            promise.resolve(nativeArray)
-        }
     }
 
     @ReactMethod
@@ -205,32 +204,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     }
                 }
             }
-        }
-    }
-
-    @ReactMethod
-    fun getBalance(alias: String, promise: Promise) {
-        val wallet = getWallet(alias)
-        var availableZatoshi = Zatoshi(0L)
-        var totalZatoshi = Zatoshi(0L)
-
-        wallet.coroutineScope.launch {
-            wallet.coroutineScope.async { wallet.refreshAllBalances() }.await()
-
-            val transparentBalances = wallet.transparentBalances.value
-            availableZatoshi = availableZatoshi.plus(transparentBalances?.available ?: Zatoshi(0L))
-            totalZatoshi = totalZatoshi.plus(transparentBalances?.total ?: Zatoshi(0L))
-            val saplingBalances = wallet.saplingBalances.value
-            availableZatoshi = availableZatoshi.plus(saplingBalances?.available ?: Zatoshi(0L))
-            totalZatoshi = totalZatoshi.plus(saplingBalances?.total ?: Zatoshi(0L))
-            val orchardBalances = wallet.orchardBalances.value
-            availableZatoshi = availableZatoshi.plus(orchardBalances?.available ?: Zatoshi(0L))
-            totalZatoshi = totalZatoshi.plus(orchardBalances?.total ?: Zatoshi(0L))
-
-            val map = Arguments.createMap()
-            map.putString("totalZatoshi", totalZatoshi.value.toString())
-            map.putString("availableZatoshi", availableZatoshi.value.toString())
-            promise.resolve(map)
         }
     }
 
