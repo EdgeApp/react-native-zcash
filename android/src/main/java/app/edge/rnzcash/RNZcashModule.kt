@@ -16,11 +16,11 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlin.coroutines.EmptyCoroutineContext
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -29,10 +29,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
      * Scope for anything that out-lives the synchronizer, meaning anything that can be used before
      * the synchronizer starts or after it stops. Everything else falls within the scope of the
      * synchronizer and should use `synchronizer.coroutineScope` whenever a scope is needed.
-     *
-     * In a real production app, we'd use the scope of the parent activity
      */
-    private var moduleScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
+    private var moduleScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
     private var synchronizerMap = mutableMapOf<String, SdkSynchronizer>()
 
     private val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
