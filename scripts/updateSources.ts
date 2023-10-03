@@ -25,14 +25,14 @@ function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/zcash/ZcashLightClientKit.git',
-    // 0.22.0-beta:
-    'c1e07405192415d42caafd06725f28e9649ecd13'
+    // 2.0.1:
+    'bb99939415022a6088743a8f1271fec77f687464'
   )
   getRepo(
     'zcash-light-client-ffi',
     'https://github.com/zcash-hackworks/zcash-light-client-ffi.git',
-    // 0.3.1:
-    '75821e2b859600707318e4a788abbe27e6615833'
+    // 0.4.0:
+    '9bc5877ef6302e877922f79ebead52e50bce94fd'
   )
 }
 

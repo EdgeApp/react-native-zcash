@@ -10,6 +10,7 @@ RCT_EXTERN_METHOD(initialize:(NSString *)seed
 :(NSString *)networkName
 :(NSString *)defaultHost
 :(NSInteger *)defaultPort
+:(BOOL *)newWallet
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )

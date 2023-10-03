@@ -43,15 +43,11 @@ struct TotalBalances {
 
 struct ProcessorState {
   var alias: String
-  var lastDownloadedHeight: Int
-  var lastScannedHeight: Int
   var scanProgress: Int
   var networkBlockHeight: Int
   var dictionary: [String: Any] {
     return [
       "alias": alias,
-      "lastDownloadedHeight": lastDownloadedHeight,
-      "lastScannedHeight": lastScannedHeight,
       "scanProgress": scanProgress,
       "networkBlockHeight": networkBlockHeight,
     ]
@@ -83,7 +79,7 @@ class RNZcash: RCTEventEmitter {
   // Synchronizer
   @objc func initialize(
     _ seed: String, _ birthdayHeight: Int, _ alias: String, _ networkName: String,
-    _ defaultHost: String, _ defaultPort: Int, resolver resolve: @escaping RCTPromiseResolveBlock,
+    _ defaultHost: String, _ defaultPort: Int, _ newWallet: Bool, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
@@ -92,6 +88,7 @@ class RNZcash: RCTEventEmitter {
       let initializer = Initializer(
         cacheDbURL: try! cacheDbURLHelper(alias, network),
         fsBlockDbRoot: try! fsBlockDbRootURLHelper(alias, network),
+        generalStorageURL: try! generalStorageURLHelper(alias, network),
         dataDbURL: try! dataDbURLHelper(alias, network),
         endpoint: endpoint,
         network: network,
@@ -105,12 +102,12 @@ class RNZcash: RCTEventEmitter {
           let wallet = try WalletSynchronizer(
             alias: alias, initializer: initializer, emitter: sendToJs)
           let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
-          let viewingKeys = try deriveUnifiedViewingKey(seed, network)
+          let initMode = newWallet ? WalletInitMode.newWallet : WalletInitMode.existingWallet
 
           _ = try await wallet.synchronizer.prepare(
             with: seedBytes,
-            viewingKeys: [viewingKeys],
-            walletBirthday: birthdayHeight
+            walletBirthday: birthdayHeight,
+            for: initMode
           )
           try await wallet.synchronizer.start()
           wallet.subscribe()
@@ -468,8 +465,6 @@ class WalletSynchronizer: NSObject {
     self.restart = false
     self.processorState = ProcessorState(
       alias: self.alias,
-      lastDownloadedHeight: 0,
-      lastScannedHeight: 0,
       scanProgress: 0,
       networkBlockHeight: 0
     )
@@ -508,37 +503,21 @@ class WalletSynchronizer: NSObject {
   }
 
   func updateProcessorState(event: SynchronizerState) {
-    let prevLastDownloadedHeight = self.processorState.lastDownloadedHeight
     let prevScanProgress = self.processorState.scanProgress
-    let prevLastScannedHeight = self.synchronizer.latestState.latestScannedHeight
-    let prevNetworkBlockHeight = self.processorState.lastScannedHeight
+    self.processorState.networkBlockHeight = event.latestBlockHeight
 
     if event.internalSyncStatus != .synced {
       switch event.internalSyncStatus {
-      case .syncing(let status):
-        // The SDK emits all zero values just before emitting a SYNCED status so we need to ignore these
-        if status.targetHeight == 0 {
-          return
-        }
-        self.processorState.lastDownloadedHeight = status.progressHeight
-        self.processorState.scanProgress = Int(floor(status.progress * 100))
-        self.processorState.lastScannedHeight = status.progressHeight
-        self.processorState.networkBlockHeight = status.targetHeight
+      case .syncing(let progress):
+        self.processorState.scanProgress = Int(floor(progress * 100))
       default:
         return
       }
     } else {
-      self.processorState.lastDownloadedHeight = self.synchronizer.latestState.latestScannedHeight
       self.processorState.scanProgress = 100
-      self.processorState.lastScannedHeight = self.synchronizer.latestState.latestScannedHeight
-      self.processorState.networkBlockHeight = event.latestBlockHeight
     }
 
-    if self.processorState.lastDownloadedHeight != prevLastDownloadedHeight
-      || self.processorState.scanProgress != prevScanProgress
-      || self.processorState.lastScannedHeight != prevLastScannedHeight
-      || self.processorState.networkBlockHeight != prevNetworkBlockHeight
-    {
+    if self.processorState.scanProgress != prevScanProgress {
       emit("UpdateEvent", self.processorState.nsDictionary)
     }
   }
@@ -546,25 +525,10 @@ class WalletSynchronizer: NSObject {
   func initializeProcessorState() {
     self.processorState = ProcessorState(
       alias: self.alias,
-      lastDownloadedHeight: 0,
-      lastScannedHeight: 0,
       scanProgress: 0,
       networkBlockHeight: 0
     )
   }
-}
-
-func z_hexEncodedString(data: Data) -> String {
-  let hexDigits = Array("0123456789abcdef".utf16)
-  var chars: [unichar] = []
-
-  chars.reserveCapacity(2 * data.count)
-  for byte in data {
-    chars.append(hexDigits[Int(byte / 16)])
-    chars.append(hexDigits[Int(byte % 16)])
-  }
-
-  return String(utf16CodeUnits: chars, count: chars.count)
 }
 
 // Local file helper funcs
@@ -601,6 +565,14 @@ func fsBlockDbRootURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> 
   try documentsDirectoryHelper()
     .appendingPathComponent(
       network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultFsCacheName,
+      isDirectory: true
+    )
+}
+
+func generalStorageURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
+  try documentsDirectoryHelper()
+    .appendingPathComponent(
+      network.constants.defaultDbNamePrefix + alias + "general_storage",
       isDirectory: true
     )
 }
