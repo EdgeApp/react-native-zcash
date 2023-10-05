@@ -42,12 +42,10 @@ struct TotalBalances {
 }
 
 struct ProcessorState {
-  var alias: String
   var scanProgress: Int
   var networkBlockHeight: Int
   var dictionary: [String: Any] {
     return [
-      "alias": alias,
       "scanProgress": scanProgress,
       "networkBlockHeight": networkBlockHeight,
     ]
@@ -374,7 +372,6 @@ class WalletSynchronizer: NSObject {
     self.fullySynced = false
     self.restart = false
     self.processorState = ProcessorState(
-      alias: self.alias,
       scanProgress: 0,
       networkBlockHeight: 0
     )
@@ -385,6 +382,9 @@ class WalletSynchronizer: NSObject {
     self.synchronizer.stateStream
       .throttle(for: .seconds(0.3), scheduler: DispatchQueue.main, latest: true)
       .sink(receiveValue: { [weak self] state in self?.updateSyncStatus(event: state) })
+      .store(in: &cancellables)
+    self.synchronizer.stateStream
+      .sink(receiveValue: { [weak self] state in self?.updateProcessorState(event: state) })
       .store(in: &cancellables)
     self.synchronizer.eventStream
       .sink { SynchronizerEvent in
@@ -421,33 +421,32 @@ class WalletSynchronizer: NSObject {
       let data: NSDictionary = ["alias": self.alias, "name": self.status]
       emit("StatusEvent", data)
     }
-
-    updateProcessorState(event: event)
   }
 
   func updateProcessorState(event: SynchronizerState) {
-    let prevScanProgress = self.processorState.scanProgress
-    self.processorState.networkBlockHeight = event.latestBlockHeight
+    var scanProgress = 0
 
-    if event.internalSyncStatus != .synced {
-      switch event.internalSyncStatus {
-      case .syncing(let progress):
-        self.processorState.scanProgress = Int(floor(progress * 100))
-      default:
-        return
-      }
-    } else {
-      self.processorState.scanProgress = 100
+    switch event.internalSyncStatus {
+    case .syncing(let progress):
+      scanProgress = Int(floor(progress * 100))
+    case .synced:
+      scanProgress = 100
+    case .unprepared, .disconnected, .stopped:
+      scanProgress = 0
+    default:
+      return
     }
-    if self.processorState.scanProgress != prevScanProgress {
-      emit("UpdateEvent", self.processorState.nsDictionary)
-    }
+
+    if (scanProgress == self.processorState.scanProgress && event.latestBlockHeight == self.processorState.networkBlockHeight) { return }
+
+    self.processorState = ProcessorState(scanProgress: scanProgress, networkBlockHeight: event.latestBlockHeight)
+    let data: NSDictionary = ["alias": self.alias, "scanProgress": self.processorState.scanProgress, "networkBlockHeight": self.processorState.networkBlockHeight]
+    emit("UpdateEvent", data)
     updateBalanceState(event: event)
   }
 
   func initializeProcessorState() {
     self.processorState = ProcessorState(
-      alias: self.alias,
       scanProgress: 0,
       networkBlockHeight: 0
     )
