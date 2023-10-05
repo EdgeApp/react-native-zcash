@@ -221,7 +221,7 @@ class RNZcash: RCTEventEmitter {
             memo: sdkMemo
           )
 
-          let tx: NSMutableDictionary = ["txId": broadcastTx.rawID.hexEncodedString()]
+          let tx: NSMutableDictionary = ["txId": broadcastTx.rawID.toHexStringTxId()]
           if broadcastTx.raw != nil {
             tx["raw"] = broadcastTx.raw?.hexEncodedString()
           }
@@ -343,6 +343,7 @@ class RNZcash: RCTEventEmitter {
                 wallet.initializeProcessorState()
                 wallet.cancellables.forEach { $0.cancel() }
                 wallet.subscribe()
+                try await wallet.synchronizer.start()
                 resolve(nil)
               case .failure:
                 reject("RescanError", "Failed to rescan wallet", genericError)
