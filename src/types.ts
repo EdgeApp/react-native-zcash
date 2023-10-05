@@ -70,9 +70,11 @@ export interface BlockRange {
 
 export interface ConfirmedTransaction {
   rawTransactionId: string
+  raw?: string
   blockTimeInSeconds: number
   minedHeight: number
   value: string
+  fee?: string
   toAddress?: string
   memos: string[]
 }

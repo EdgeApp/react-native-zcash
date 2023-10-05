@@ -8,17 +8,21 @@ var SynchronizerMap = [String: WalletSynchronizer]()
 struct ConfirmedTx {
   var minedHeight: Int
   var toAddress: String?
+  var raw: String?
   var rawTransactionId: String
   var blockTimeInSeconds: Int
   var value: String
+  var fee: String?
   var memos: Array<String>?
   var dictionary: [String: Any?] {
     return [
       "minedHeight": minedHeight,
       "toAddress": toAddress,
+      "raw": raw,
       "rawTransactionId": rawTransactionId,
       "blockTimeInSeconds": blockTimeInSeconds,
       "value": value,
+      "fee": fee,
       "memos": memos ?? [],
     ]
   }
@@ -484,6 +488,12 @@ class WalletSynchronizer: NSObject {
           blockTimeInSeconds: Int(tx.blockTime!),
           value: String(describing: abs(tx.value.amount))
         )
+        if tx.raw != nil {
+          confTx.raw = tx.raw!.hexEncodedString()
+        }
+        if tx.fee != nil {
+          confTx.fee = String(describing: abs(tx.value.amount))
+        }
         if tx.isSentTransaction {
           let recipients = await self.synchronizer.getRecipients(for: tx)
           if recipients.count > 0 {

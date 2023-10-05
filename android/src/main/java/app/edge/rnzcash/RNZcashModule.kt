@@ -136,9 +136,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val map = Arguments.createMap()
         val job = wallet.coroutineScope.launch {
             map.putString("value", tx.netValue.value.toString())
+            if (tx.feePaid != null) {
+                map.putString("fee", tx.feePaid!!.value.toString())
+            }
             map.putInt("minedHeight", tx.minedHeight!!.value.toInt())
             map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds!!.toInt())
             map.putString("rawTransactionId", tx.rawId.byteArray.toHexReversed())
+            if (tx.raw != null) {
+                map.putString("raw", tx.raw!!.byteArray.toHex())
+            }
             if (tx.isSentTransaction) {
                 val recipient = wallet.getRecipients(tx).first()
                 if (recipient is TransactionRecipient.Address) {
