@@ -10,6 +10,7 @@ RCT_EXTERN_METHOD(initialize:(NSString *)seed
 :(NSString *)networkName
 :(NSString *)defaultHost
 :(NSInteger *)defaultPort
+:(BOOL *)newWallet
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
@@ -40,18 +41,6 @@ RCT_EXTERN_METHOD(sendToAddress:(NSString *)alias
 :(NSString *)toAddress
 :(NSString *)memo
 :(NSString *)spendingKey
-resolver:(RCTPromiseResolveBlock)resolve
-rejecter:(RCTPromiseRejectBlock)reject
-)
-
-RCT_EXTERN_METHOD(getTransactions:(NSString *)alias
-:(NSInteger *)first
-:(NSInteger *)last
-resolver:(RCTPromiseResolveBlock)resolve
-rejecter:(RCTPromiseRejectBlock)reject
-)
-
-RCT_EXTERN_METHOD(getBalance:(NSString *)alias
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )

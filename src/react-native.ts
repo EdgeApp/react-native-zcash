@@ -6,16 +6,13 @@ import {
 
 import {
   Addresses,
-  BlockRange,
-  ConfirmedTransaction,
   InitializerConfig,
   Network,
   SpendFailure,
   SpendInfo,
   SpendSuccess,
   SynchronizerCallbacks,
-  UnifiedViewingKey,
-  WalletBalance
+  UnifiedViewingKey
 } from './types'
 
 const { RNZcash } = NativeModules
@@ -69,7 +66,8 @@ export class Synchronizer {
       initializerConfig.alias,
       initializerConfig.networkName,
       initializerConfig.defaultHost,
-      initializerConfig.defaultPort
+      initializerConfig.defaultPort,
+      initializerConfig.newWallet
     )
   }
 
@@ -80,20 +78,6 @@ export class Synchronizer {
 
   async getLatestNetworkHeight(alias: string): Promise<number> {
     const result = await RNZcash.getLatestNetworkHeight(alias)
-    return result
-  }
-
-  async getBalance(): Promise<WalletBalance> {
-    const result = await RNZcash.getBalance(this.alias)
-    return result
-  }
-
-  async getTransactions(range: BlockRange): Promise<ConfirmedTransaction[]> {
-    const result = await RNZcash.getTransactions(
-      this.alias,
-      range.first,
-      range.last
-    )
     return result
   }
 
@@ -116,8 +100,15 @@ export class Synchronizer {
 
   // Events
 
-  subscribe({ onStatusChanged, onUpdate }: SynchronizerCallbacks): void {
+  subscribe({
+    onBalanceChanged,
+    onStatusChanged,
+    onTransactionsChanged,
+    onUpdate
+  }: SynchronizerCallbacks): void {
+    this.setListener('BalanceEvent', onBalanceChanged)
     this.setListener('StatusEvent', onStatusChanged)
+    this.setListener('TransactionEvent', onTransactionsChanged)
     this.setListener('UpdateEvent', onUpdate)
   }
 
