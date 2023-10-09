@@ -104,17 +104,14 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             combine(
                 wallet.transparentBalances,
                 wallet.saplingBalances,
-                wallet.orchardBalances,
-            ) { transparentBalances, saplingBalances, orchardBalances ->
+            ) { transparentBalances, saplingBalances ->
                 return@combine mapOf(
                     "transparentBalances" to transparentBalances,
                     "saplingBalances" to saplingBalances,
-                    "orchardBalances" to orchardBalances,
                 )
             }.collectWith(scope) { map ->
                 val transparentBalances = map["transparentBalances"]
                 val saplingBalances = map["saplingBalances"]
-                val orchardBalances = map["orchardBalances"]
 
                 var availableZatoshi = Zatoshi(0L)
                 var totalZatoshi = Zatoshi(0L)
@@ -124,9 +121,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
 
                 availableZatoshi = availableZatoshi.plus(saplingBalances?.available ?: Zatoshi(0L))
                 totalZatoshi = totalZatoshi.plus(saplingBalances?.total ?: Zatoshi(0L))
-
-                availableZatoshi = availableZatoshi.plus(orchardBalances?.available ?: Zatoshi(0L))
-                totalZatoshi = totalZatoshi.plus(orchardBalances?.total ?: Zatoshi(0L))
 
                 sendEvent("BalanceEvent") { args ->
                     args.putString("alias", alias)
