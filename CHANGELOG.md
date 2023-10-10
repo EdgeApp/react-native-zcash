@@ -1,5 +1,22 @@
 # React Native Zcash
 
+## 0.6.0 (2023-10-10)
+
+- added: Balances and transactions are no longer queryable and are now emitted as updates are found
+- changed: Upgrade zcash-android-sdk to v2.0.1
+- changed: Upgrade ZcashLightClientKit to v2.0.1
+- changed: Return `raw` and `fee` with transactions
+- removed: `getBalance` and `getTransactions`
+
+Android:
+
+- changed: Various syntax cleanups
+
+iOS:
+
+- fixed: Restart synchronizer on rescan
+- fixed: Txid parsing
+
 ## 0.5.0 (2023-09-20)
 
 - changed: `deriveUnifiedAddress` will now return all three address types
