@@ -190,7 +190,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            wallet.coroutineScope.async { wallet.rewindToNearestHeight(wallet.latestBirthdayHeight) }.await()
+            wallet.rewindToNearestHeight(wallet.latestBirthdayHeight)
             promise.resolve(null)
         }
     }
@@ -204,13 +204,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val seedPhrase = SeedPhrase.new(seed)
         moduleScope.launch {
             val keys =
-                moduleScope.async {
-                    DerivationTool.getInstance().deriveUnifiedFullViewingKeys(
-                        seedPhrase.toByteArray(),
-                        networks.getOrDefault(network, ZcashNetwork.Mainnet),
-                        DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS,
-                    )[0]
-                }.await()
+                DerivationTool.getInstance().deriveUnifiedFullViewingKeys(
+                    seedPhrase.toByteArray(),
+                    networks.getOrDefault(network, ZcashNetwork.Mainnet),
+                    DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS,
+                )[0]
             promise.resolve(keys.encoding)
         }
     }
@@ -267,10 +265,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
             val seedPhrase = SeedPhrase.new(seed)
-            val usk =
-                wallet.coroutineScope.async {
-                    DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
-                }.await()
+            val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
             try {
                 val internalId =
                     wallet.sendToAddress(
@@ -301,9 +296,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            val unifiedAddress = wallet.coroutineScope.async { wallet.getUnifiedAddress(Account(0)) }.await()
-            val saplingAddress = wallet.coroutineScope.async { wallet.getSaplingAddress(Account(0)) }.await()
-            val transparentAddress = wallet.coroutineScope.async { wallet.getTransparentAddress(Account(0)) }.await()
+            val unifiedAddress = wallet.getUnifiedAddress(Account(0))
+            val saplingAddress = wallet.getSaplingAddress(Account(0))
+            val transparentAddress = wallet.getTransparentAddress(Account(0))
 
             val map = Arguments.createMap()
             map.putString("unifiedAddress", unifiedAddress)
