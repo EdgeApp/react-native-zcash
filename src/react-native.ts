@@ -14,6 +14,7 @@ import {
   SynchronizerCallbacks,
   UnifiedViewingKey
 } from './types'
+export * from './types'
 
 const { RNZcash } = NativeModules
 
@@ -53,7 +54,7 @@ export class Synchronizer {
     this.network = network
   }
 
-  async stop(): Promise<String> {
+  async stop(): Promise<string> {
     this.unsubscribe()
     const result = await RNZcash.stop(this.alias)
     return result
