@@ -85,7 +85,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             wallet.transactions.collectWith(scope) { txList ->
                 scope.launch {
                     val nativeArray = Arguments.createArray()
-                    txList.filter { tx -> tx.transactionState == TransactionState.Confirmed }.map { tx ->
+                    txList.filter { tx -> tx.transactionState != TransactionState.Expired }.map { tx ->
                         launch {
                             val parsedTx = parseTx(wallet, tx)
                             nativeArray.pushMap(parsedTx)
