@@ -113,25 +113,18 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 val transparentBalances = map["transparentBalances"]
                 val saplingBalances = map["saplingBalances"]
 
-                var availableZatoshi = Zatoshi(0L)
-                var totalZatoshi = Zatoshi(0L)
+                val transparentAvailableZatoshi = transparentBalances?.available ?: Zatoshi(0L)
+                val transparentTotalZatoshi = transparentBalances?.total ?: Zatoshi(0L)
 
-                availableZatoshi = availableZatoshi.plus(transparentBalances?.available ?: Zatoshi(0L))
-                totalZatoshi = totalZatoshi.plus(transparentBalances?.total ?: Zatoshi(0L))
-
-                availableZatoshi = availableZatoshi.plus(saplingBalances?.available ?: Zatoshi(0L))
-                totalZatoshi = totalZatoshi.plus(saplingBalances?.total ?: Zatoshi(0L))
+                val saplingAvailableZatoshi = saplingBalances?.available ?: Zatoshi(0L)
+                val saplingTotalZatoshi = saplingBalances?.total ?: Zatoshi(0L)
 
                 sendEvent("BalanceEvent") { args ->
                     args.putString("alias", alias)
-                    args.putString(
-                        "totalZatoshi",
-                        totalZatoshi.value.toString(),
-                    )
-                    args.putString(
-                        "availableZatoshi",
-                        availableZatoshi.value.toString(),
-                    )
+                    args.putString("transparentAvailableZatoshi", transparentAvailableZatoshi.value.toString())
+                    args.putString("transparentTotalZatoshi", transparentTotalZatoshi.value.toString())
+                    args.putString("saplingAvailableZatoshi", saplingAvailableZatoshi.value.toString())
+                    args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
                 }
             }
             return@wrap null

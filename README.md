@@ -46,7 +46,7 @@ buildscript {
 
 `Tools` contains methods that don't require a running synchronizer (with one exception, `isValidAddress` on Android which does requires any synchronizer connected to the requested network). In addition to the methods above, the following events can be subscribed to:
 
-- `BalanceEvent`- aggregate total and available balances
+- `BalanceEvent`- available and total transparent and shielded balances
 - `StatusEvent` - current synchronizer activity (`STOPPED`, `DISCONNECTED`, `SYNCING`, and `SYNCED`)
 - `TransactionEvent`- confirmed transactions
 - `UpdateEvent` - syncing progress and network height

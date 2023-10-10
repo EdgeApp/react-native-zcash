@@ -32,12 +32,16 @@ struct ConfirmedTx {
 }
 
 struct TotalBalances {
-  var availableZatoshi: String
-  var totalZatoshi: String
+  var transparentAvailableZatoshi: Zatoshi
+  var transparentTotalZatoshi: Zatoshi
+  var saplingAvailableZatoshi: Zatoshi
+  var saplingTotalZatoshi: Zatoshi
   var dictionary: [String: Any] {
     return [
-      "availableZatoshi": availableZatoshi,
-      "totalZatoshi": totalZatoshi,
+      "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
+      "transparentTotalZatoshi": String(transparentTotalZatoshi.amount),
+      "saplingAvailableZatoshi": String(saplingAvailableZatoshi.amount),
+      "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
     ]
   }
   var nsDictionary: NSDictionary {
@@ -381,7 +385,11 @@ class WalletSynchronizer: NSObject {
       scanProgress: 0,
       networkBlockHeight: 0
     )
-    self.balances = TotalBalances(availableZatoshi: "0", totalZatoshi: "0")
+    self.balances = TotalBalances(
+      transparentAvailableZatoshi: Zatoshi(0),
+      transparentTotalZatoshi: Zatoshi(0),
+      saplingAvailableZatoshi: Zatoshi(0),
+      saplingTotalZatoshi: Zatoshi(0))
   }
 
   public func subscribe() {
@@ -464,33 +472,39 @@ class WalletSynchronizer: NSObject {
       scanProgress: 0,
       networkBlockHeight: 0
     )
-    self.balances = TotalBalances(availableZatoshi: "0", totalZatoshi: "0")
+    self.balances = TotalBalances(
+      transparentAvailableZatoshi: Zatoshi(0),
+      transparentTotalZatoshi: Zatoshi(0),
+      saplingAvailableZatoshi: Zatoshi(0),
+      saplingTotalZatoshi: Zatoshi(0))
   }
 
   func updateBalanceState(event: SynchronizerState) {
     let transparentBalance = event.transparentBalance
     let shieldedBalance = event.shieldedBalance
 
-    let availableTransparentBalance = transparentBalance.verified
-    let totalTransparentBalance = transparentBalance.total
+    let transparentAvailableZatoshi = transparentBalance.verified
+    let transparentTotalZatoshi = transparentBalance.total
 
-    let availableShieldedBalance = shieldedBalance.verified
-    let totalShieldedBalance = shieldedBalance.total
+    let saplingAvailableZatoshi = shieldedBalance.verified
+    let saplingTotalZatoshi = shieldedBalance.total
 
-    let availableZatoshi = String((availableShieldedBalance + availableTransparentBalance).amount)
-    let totalZatoshi = String((totalShieldedBalance + totalTransparentBalance).amount)
-
-    if availableZatoshi == self.balances.availableZatoshi
-      && totalZatoshi == self.balances.totalZatoshi
+    if transparentAvailableZatoshi == self.balances.transparentAvailableZatoshi
+      && transparentTotalZatoshi == self.balances.transparentTotalZatoshi
+      && saplingAvailableZatoshi == self.balances.saplingAvailableZatoshi
+      && saplingTotalZatoshi == self.balances.saplingTotalZatoshi
     {
       return
     }
 
-    self.balances = TotalBalances(availableZatoshi: availableZatoshi, totalZatoshi: totalZatoshi)
-    let data: NSDictionary = [
-      "alias": self.alias, "availableZatoshi": self.balances.availableZatoshi,
-      "totalZatoshi": self.balances.totalZatoshi,
-    ]
+    self.balances = TotalBalances(
+      transparentAvailableZatoshi: transparentAvailableZatoshi,
+      transparentTotalZatoshi: transparentTotalZatoshi,
+      saplingAvailableZatoshi: saplingAvailableZatoshi,
+      saplingTotalZatoshi: saplingTotalZatoshi
+    )
+    let data = NSMutableDictionary(dictionary: self.balances.nsDictionary)
+    data["alias"] = self.alias
     emit("BalanceEvent", data)
   }
 

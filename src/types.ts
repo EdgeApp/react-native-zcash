@@ -33,8 +33,10 @@ export interface UnifiedViewingKey {
 }
 
 export interface BalanceEvent {
-  availableZatoshi: string
-  totalZatoshi: string
+  transparentAvailableZatoshi: string
+  transparentTotalZatoshi: string
+  saplingAvailableZatoshi: string
+  saplingTotalZatoshi: string
 }
 
 export interface StatusEvent {
