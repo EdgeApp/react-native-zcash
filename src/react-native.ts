@@ -8,10 +8,12 @@ import {
   Addresses,
   InitializerConfig,
   Network,
+  ShieldFundsInfo,
   SpendFailure,
   SpendInfo,
   SpendSuccess,
   SynchronizerCallbacks,
+  Transaction,
   UnifiedViewingKey
 } from './types'
 export * from './types'
@@ -95,6 +97,16 @@ export class Synchronizer {
       spendInfo.toAddress,
       spendInfo.memo,
       spendInfo.mnemonicSeed
+    )
+    return result
+  }
+
+  async shieldFunds(shieldFundsInfo: ShieldFundsInfo): Promise<Transaction> {
+    const result = await RNZcash.shieldFunds(
+      this.alias,
+      shieldFundsInfo.seed,
+      shieldFundsInfo.memo,
+      shieldFundsInfo.threshold
     )
     return result
   }

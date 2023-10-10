@@ -17,6 +17,12 @@ export interface SpendInfo {
   mnemonicSeed: string
 }
 
+export interface ShieldFundsInfo {
+  seed: string
+  memo: string
+  threshold: string
+}
+
 export interface SpendSuccess {
   txId: string
   raw: string
@@ -49,7 +55,7 @@ export interface StatusEvent {
 }
 
 export interface TransactionEvent {
-  transactions: ConfirmedTransaction[]
+  transactions: Transaction[]
 }
 
 export interface UpdateEvent {
@@ -70,7 +76,7 @@ export interface BlockRange {
   last: number
 }
 
-export interface ConfirmedTransaction {
+export interface Transaction {
   rawTransactionId: string
   raw?: string
   blockTimeInSeconds: number

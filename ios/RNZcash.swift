@@ -239,6 +239,43 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
+  @objc func shieldFunds(
+    _ alias: String, _ seed: String, _ memo: String, _ threshold: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        if !wallet.fullySynced {
+          reject("shieldFunds", "Wallet is not synced", genericError)
+          return
+        }
+
+        do {
+          let spendingKey = try deriveUnifiedSpendingKey(seed, wallet.synchronizer.network)
+          let sdkMemo = try Memo(string: memo)
+          let shieldingThreshold = Int64(threshold) ?? 10000
+
+          let tx = try await wallet.synchronizer.shieldFunds(
+            spendingKey: spendingKey,
+            memo: sdkMemo,
+            shieldingThreshold: Zatoshi(shieldingThreshold)
+          )
+
+          var confTx = await wallet.parseTx(tx: tx)
+
+          // Hack: Memos aren't ready to be queried right after broadcast
+          confTx.memos = [memo]
+          resolve(confTx.nsDictionary)
+        } catch {
+          reject("shieldFunds", "Failed to shield funds", genericError)
+        }
+      } else {
+        reject("shieldFunds", "Wallet does not exist", genericError)
+      }
+    }
+  }
+
   @objc func rescan(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
@@ -510,9 +547,9 @@ class WalletSynchronizer: NSObject {
 
   func parseTx(tx: ZcashTransaction.Overview) async -> ConfirmedTx {
     var confTx = ConfirmedTx(
-          minedHeight: tx.minedHeight!,
+      minedHeight: tx.minedHeight ?? 0,
       rawTransactionId: (tx.rawID.toHexStringTxId()),
-          blockTimeInSeconds: Int(tx.blockTime!),
+      blockTimeInSeconds: Int(tx.blockTime ?? 0),
       value: String(describing: abs(tx.value.amount))
     )
     if tx.raw != nil {

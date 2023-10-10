@@ -153,16 +153,20 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 if (tx.feePaid != null) {
                     map.putString("fee", tx.feePaid!!.value.toString())
                 }
-                map.putInt("minedHeight", tx.minedHeight!!.value.toInt())
-                map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds!!.toInt())
+                map.putInt("minedHeight", tx.minedHeight?.value?.toInt() ?: 0)
+                map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds?.toInt() ?: 0)
                 map.putString("rawTransactionId", tx.rawId.byteArray.toHexReversed())
                 if (tx.raw != null) {
                     map.putString("raw", tx.raw!!.byteArray.toHex())
                 }
                 if (tx.isSentTransaction) {
-                    val recipient = wallet.getRecipients(tx).first()
-                    if (recipient is TransactionRecipient.Address) {
-                        map.putString("toAddress", recipient.addressValue)
+                    try {
+                        val recipient = wallet.getRecipients(tx).first()
+                        if (recipient is TransactionRecipient.Address) {
+                            map.putString("toAddress", recipient.addressValue)
+                        }
+                    } catch (t: Throwable) {
+                        // Error is OK. SDK limitation means we cannot find recipient for shielding transactions
                     }
                 }
                 if (tx.memoCount > 0) {
@@ -272,6 +276,38 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 map.putString("txId", tx.rawId.byteArray.toHexReversed())
                 if (tx.raw != null) map.putString("raw", tx.raw?.byteArray?.toHex())
                 promise.resolve(map)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun shieldFunds(
+        alias: String,
+        seed: String,
+        memo: String,
+        threshold: String,
+        promise: Promise,
+    ) {
+        val wallet = getWallet(alias)
+        wallet.coroutineScope.launch {
+            val seedPhrase = SeedPhrase.new(seed)
+            val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
+            try {
+                val internalId =
+                    wallet.shieldFunds(
+                        usk,
+                        memo,
+                    )
+                val tx = wallet.coroutineScope.async { wallet.transactions.first().first() }.await()
+                val parsedTx = parseTx(wallet, tx)
+
+                // Hack: Memos aren't ready to be queried right after broadcast
+                val memos = Arguments.createArray()
+                memos.pushString(memo)
+                parsedTx.putArray("memos", memos)
+                promise.resolve(parsedTx)
             } catch (t: Throwable) {
                 promise.reject("Err", t)
             }

@@ -42,6 +42,7 @@ buildscript {
   - `rescan`
   - `getLatestNetworkHeight`
   - `sendToAddress`
+  - `shieldFunds`
   - `deriveUnifiedAddress`
 
 `Tools` contains methods that don't require a running synchronizer (with one exception, `isValidAddress` on Android which does requires any synchronizer connected to the requested network). In addition to the methods above, the following events can be subscribed to:
