@@ -508,45 +508,50 @@ class WalletSynchronizer: NSObject {
     emit("BalanceEvent", data)
   }
 
+  func parseTx(tx: ZcashTransaction.Overview) async -> ConfirmedTx {
+    var confTx = ConfirmedTx(
+          minedHeight: tx.minedHeight!,
+      rawTransactionId: (tx.rawID.toHexStringTxId()),
+          blockTimeInSeconds: Int(tx.blockTime!),
+      value: String(describing: abs(tx.value.amount))
+    )
+    if tx.raw != nil {
+      confTx.raw = tx.raw!.hexEncodedString()
+    }
+    if tx.fee != nil {
+      confTx.fee = String(describing: abs(tx.value.amount))
+    }
+    if tx.isSentTransaction {
+      let recipients = await self.synchronizer.getRecipients(for: tx)
+      if recipients.count > 0 {
+        let addresses = recipients.compactMap {
+          if case let .address(address) = $0 {
+            return address
+          } else {
+            return nil
+          }
+        }
+        if addresses.count > 0 {
+          confTx.toAddress = addresses.first!.stringEncoded
+        }
+      }
+    }
+    if tx.memoCount > 0 {
+      let memos = (try? await self.synchronizer.getMemos(for: tx)) ?? []
+      let textMemos = memos.compactMap {
+        return $0.toString()
+      }
+      confTx.memos = textMemos
+    }
+    return confTx
+  }
+
   func emitTxs(transactions: [ZcashTransaction.Overview]) {
     Task {
       var out: [NSDictionary] = []
       for tx in transactions {
         if tx.isExpiredUmined ?? false { continue }
-        var confTx = ConfirmedTx(
-          minedHeight: tx.minedHeight!,
-          rawTransactionId: (tx.rawID.toHexStringTxId()),
-          blockTimeInSeconds: Int(tx.blockTime!),
-          value: String(describing: abs(tx.value.amount))
-        )
-        if tx.raw != nil {
-          confTx.raw = tx.raw!.hexEncodedString()
-        }
-        if tx.fee != nil {
-          confTx.fee = String(describing: abs(tx.value.amount))
-        }
-        if tx.isSentTransaction {
-          let recipients = await self.synchronizer.getRecipients(for: tx)
-          if recipients.count > 0 {
-            let addresses = recipients.compactMap {
-              if case let .address(address) = $0 {
-                return address
-              } else {
-                return nil
-              }
-            }
-            if addresses.count > 0 {
-              confTx.toAddress = addresses.first!.stringEncoded
-            }
-          }
-        }
-        if tx.memoCount > 0 {
-          let memos = (try? await self.synchronizer.getMemos(for: tx)) ?? []
-          let textMemos = memos.compactMap {
-            return $0.toString()
-          }
-          confTx.memos = textMemos
-        }
+        let confTx = await parseTx(tx: tx)
         out.append(confTx.nsDictionary)
       }
 
