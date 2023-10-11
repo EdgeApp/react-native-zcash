@@ -1,5 +1,16 @@
 # React Native Zcash
 
+## 0.6.1 (2023-10-11)
+
+- added: Add `shieldFunds` support
+- changed: Package now exports types
+- deprecated: Balance event fields `availableZatoshi` and `totalZatoshi`
+
+Android
+
+- changed: Various syntax cleanups
+- fixed: Transactions event now returns confirmed and pending (<10 confirmations) transactions
+
 ## 0.6.0 (2023-10-10)
 
 - added: Balances and transactions are no longer queryable and are now emitted as updates are found
