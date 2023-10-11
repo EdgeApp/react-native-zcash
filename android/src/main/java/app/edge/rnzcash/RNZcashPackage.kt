@@ -12,6 +12,5 @@ class RNZcashPackage : ReactPackage {
             RNZcashModule(reactContext),
         )
 
-    override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
-        emptyList()
+    override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> = emptyList()
 }

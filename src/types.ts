@@ -17,6 +17,12 @@ export interface SpendInfo {
   mnemonicSeed: string
 }
 
+export interface ShieldFundsInfo {
+  seed: string
+  memo: string
+  threshold: string
+}
+
 export interface SpendSuccess {
   txId: string
   raw: string
@@ -33,6 +39,12 @@ export interface UnifiedViewingKey {
 }
 
 export interface BalanceEvent {
+  transparentAvailableZatoshi: string
+  transparentTotalZatoshi: string
+  saplingAvailableZatoshi: string
+  saplingTotalZatoshi: string
+
+  /** @deprecated */
   availableZatoshi: string
   totalZatoshi: string
 }
@@ -47,7 +59,7 @@ export interface StatusEvent {
 }
 
 export interface TransactionEvent {
-  transactions: ConfirmedTransaction[]
+  transactions: Transaction[]
 }
 
 export interface UpdateEvent {
@@ -68,7 +80,7 @@ export interface BlockRange {
   last: number
 }
 
-export interface ConfirmedTransaction {
+export interface Transaction {
   rawTransactionId: string
   raw?: string
   blockTimeInSeconds: number
@@ -78,6 +90,9 @@ export interface ConfirmedTransaction {
   toAddress?: string
   memos: string[]
 }
+
+/** @deprecated Renamed `Transaction` because the package can now return unconfirmed shielding transactions */
+export type ConfirmedTransaction = Transaction
 
 export interface Addresses {
   unifiedAddress: string

@@ -13,7 +13,7 @@ struct ConfirmedTx {
   var blockTimeInSeconds: Int
   var value: String
   var fee: String?
-  var memos: Array<String>?
+  var memos: [String]?
   var dictionary: [String: Any?] {
     return [
       "minedHeight": minedHeight,
@@ -32,12 +32,16 @@ struct ConfirmedTx {
 }
 
 struct TotalBalances {
-  var availableZatoshi: String
-  var totalZatoshi: String
+  var transparentAvailableZatoshi: Zatoshi
+  var transparentTotalZatoshi: Zatoshi
+  var saplingAvailableZatoshi: Zatoshi
+  var saplingTotalZatoshi: Zatoshi
   var dictionary: [String: Any] {
     return [
-      "availableZatoshi": availableZatoshi,
-      "totalZatoshi": totalZatoshi,
+      "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
+      "transparentTotalZatoshi": String(transparentTotalZatoshi.amount),
+      "saplingAvailableZatoshi": String(saplingAvailableZatoshi.amount),
+      "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
     ]
   }
   var nsDictionary: NSDictionary {
@@ -81,7 +85,8 @@ class RNZcash: RCTEventEmitter {
   // Synchronizer
   @objc func initialize(
     _ seed: String, _ birthdayHeight: Int, _ alias: String, _ networkName: String,
-    _ defaultHost: String, _ defaultPort: Int, _ newWallet: Bool, resolver resolve: @escaping RCTPromiseResolveBlock,
+    _ defaultHost: String, _ defaultPort: Int, _ newWallet: Bool,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
@@ -234,6 +239,43 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
+  @objc func shieldFunds(
+    _ alias: String, _ seed: String, _ memo: String, _ threshold: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        if !wallet.fullySynced {
+          reject("shieldFunds", "Wallet is not synced", genericError)
+          return
+        }
+
+        do {
+          let spendingKey = try deriveUnifiedSpendingKey(seed, wallet.synchronizer.network)
+          let sdkMemo = try Memo(string: memo)
+          let shieldingThreshold = Int64(threshold) ?? 10000
+
+          let tx = try await wallet.synchronizer.shieldFunds(
+            spendingKey: spendingKey,
+            memo: sdkMemo,
+            shieldingThreshold: Zatoshi(shieldingThreshold)
+          )
+
+          var confTx = await wallet.parseTx(tx: tx)
+
+          // Hack: Memos aren't ready to be queried right after broadcast
+          confTx.memos = [memo]
+          resolve(confTx.nsDictionary)
+        } catch {
+          reject("shieldFunds", "Failed to shield funds", genericError)
+        }
+      } else {
+        reject("shieldFunds", "Wallet does not exist", genericError)
+      }
+    }
+  }
+
   @objc func rescan(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
@@ -315,11 +357,12 @@ class RNZcash: RCTEventEmitter {
         do {
           let unifiedAddress = try await wallet.synchronizer.getUnifiedAddress(accountIndex: 0)
           let saplingAddress = try await wallet.synchronizer.getSaplingAddress(accountIndex: 0)
-          let transparentAddress = try await wallet.synchronizer.getTransparentAddress(accountIndex: 0)
+          let transparentAddress = try await wallet.synchronizer.getTransparentAddress(
+            accountIndex: 0)
           let addresses: NSDictionary = [
             "unifiedAddress": unifiedAddress.stringEncoded,
             "saplingAddress": saplingAddress.stringEncoded,
-            "transparentAddress": transparentAddress.stringEncoded
+            "transparentAddress": transparentAddress.stringEncoded,
           ]
           resolve(addresses)
           return
@@ -379,7 +422,11 @@ class WalletSynchronizer: NSObject {
       scanProgress: 0,
       networkBlockHeight: 0
     )
-    self.balances = TotalBalances(availableZatoshi: "0", totalZatoshi: "0")
+    self.balances = TotalBalances(
+      transparentAvailableZatoshi: Zatoshi(0),
+      transparentTotalZatoshi: Zatoshi(0),
+      saplingAvailableZatoshi: Zatoshi(0),
+      saplingTotalZatoshi: Zatoshi(0))
   }
 
   public func subscribe() {
@@ -393,19 +440,19 @@ class WalletSynchronizer: NSObject {
     self.synchronizer.eventStream
       .sink { SynchronizerEvent in
         switch SynchronizerEvent {
-          case .minedTransaction(let transaction):
-              self.emitTxs(transactions: [transaction])
-          case .foundTransactions(let transactions, _):
-              self.emitTxs(transactions: transactions)
-          default:
-              return
-          }
+        case .minedTransaction(let transaction):
+          self.emitTxs(transactions: [transaction])
+        case .foundTransactions(let transactions, _):
+          self.emitTxs(transactions: transactions)
+        default:
+          return
+        }
       }
       .store(in: &cancellables)
   }
 
   func updateSyncStatus(event: SynchronizerState) {
-    
+
     if !self.fullySynced {
       switch event.internalSyncStatus {
       case .syncing:
@@ -441,10 +488,18 @@ class WalletSynchronizer: NSObject {
       return
     }
 
-    if (scanProgress == self.processorState.scanProgress && event.latestBlockHeight == self.processorState.networkBlockHeight) { return }
+    if scanProgress == self.processorState.scanProgress
+      && event.latestBlockHeight == self.processorState.networkBlockHeight
+    {
+      return
+    }
 
-    self.processorState = ProcessorState(scanProgress: scanProgress, networkBlockHeight: event.latestBlockHeight)
-    let data: NSDictionary = ["alias": self.alias, "scanProgress": self.processorState.scanProgress, "networkBlockHeight": self.processorState.networkBlockHeight]
+    self.processorState = ProcessorState(
+      scanProgress: scanProgress, networkBlockHeight: event.latestBlockHeight)
+    let data: NSDictionary = [
+      "alias": self.alias, "scanProgress": self.processorState.scanProgress,
+      "networkBlockHeight": self.processorState.networkBlockHeight,
+    ]
     emit("UpdateEvent", data)
     updateBalanceState(event: event)
   }
@@ -454,68 +509,86 @@ class WalletSynchronizer: NSObject {
       scanProgress: 0,
       networkBlockHeight: 0
     )
-    self.balances = TotalBalances(availableZatoshi: "0", totalZatoshi: "0")
+    self.balances = TotalBalances(
+      transparentAvailableZatoshi: Zatoshi(0),
+      transparentTotalZatoshi: Zatoshi(0),
+      saplingAvailableZatoshi: Zatoshi(0),
+      saplingTotalZatoshi: Zatoshi(0))
   }
 
   func updateBalanceState(event: SynchronizerState) {
     let transparentBalance = event.transparentBalance
     let shieldedBalance = event.shieldedBalance
 
-    let availableTransparentBalance = transparentBalance.verified
-    let totalTransparentBalance = transparentBalance.total
+    let transparentAvailableZatoshi = transparentBalance.verified
+    let transparentTotalZatoshi = transparentBalance.total
 
-    let availableShieldedBalance = shieldedBalance.verified
-    let totalShieldedBalance = shieldedBalance.total
+    let saplingAvailableZatoshi = shieldedBalance.verified
+    let saplingTotalZatoshi = shieldedBalance.total
 
-    let availableZatoshi = String((availableShieldedBalance + availableTransparentBalance).amount)
-    let totalZatoshi = String((totalShieldedBalance + totalTransparentBalance).amount)
+    if transparentAvailableZatoshi == self.balances.transparentAvailableZatoshi
+      && transparentTotalZatoshi == self.balances.transparentTotalZatoshi
+      && saplingAvailableZatoshi == self.balances.saplingAvailableZatoshi
+      && saplingTotalZatoshi == self.balances.saplingTotalZatoshi
+    {
+      return
+    }
 
-    if (availableZatoshi == self.balances.availableZatoshi && totalZatoshi == self.balances.totalZatoshi) { return }
-
-    self.balances = TotalBalances(availableZatoshi: availableZatoshi, totalZatoshi: totalZatoshi)
-    let data: NSDictionary = ["alias": self.alias, "availableZatoshi": self.balances.availableZatoshi, "totalZatoshi": self.balances.totalZatoshi]
+    self.balances = TotalBalances(
+      transparentAvailableZatoshi: transparentAvailableZatoshi,
+      transparentTotalZatoshi: transparentTotalZatoshi,
+      saplingAvailableZatoshi: saplingAvailableZatoshi,
+      saplingTotalZatoshi: saplingTotalZatoshi
+    )
+    let data = NSMutableDictionary(dictionary: self.balances.nsDictionary)
+    data["alias"] = self.alias
     emit("BalanceEvent", data)
+  }
+
+  func parseTx(tx: ZcashTransaction.Overview) async -> ConfirmedTx {
+    var confTx = ConfirmedTx(
+      minedHeight: tx.minedHeight ?? 0,
+      rawTransactionId: (tx.rawID.toHexStringTxId()),
+      blockTimeInSeconds: Int(tx.blockTime ?? 0),
+      value: String(describing: abs(tx.value.amount))
+    )
+    if tx.raw != nil {
+      confTx.raw = tx.raw!.hexEncodedString()
+    }
+    if tx.fee != nil {
+      confTx.fee = String(describing: abs(tx.value.amount))
+    }
+    if tx.isSentTransaction {
+      let recipients = await self.synchronizer.getRecipients(for: tx)
+      if recipients.count > 0 {
+        let addresses = recipients.compactMap {
+          if case let .address(address) = $0 {
+            return address
+          } else {
+            return nil
+          }
+        }
+        if addresses.count > 0 {
+          confTx.toAddress = addresses.first!.stringEncoded
+        }
+      }
+    }
+    if tx.memoCount > 0 {
+      let memos = (try? await self.synchronizer.getMemos(for: tx)) ?? []
+      let textMemos = memos.compactMap {
+        return $0.toString()
+      }
+      confTx.memos = textMemos
+    }
+    return confTx
   }
 
   func emitTxs(transactions: [ZcashTransaction.Overview]) {
     Task {
       var out: [NSDictionary] = []
       for tx in transactions {
-        if (tx.isExpiredUmined ?? false) { continue }
-        var confTx = ConfirmedTx(
-          minedHeight: tx.minedHeight!,
-          rawTransactionId: (tx.rawID.toHexStringTxId()),
-          blockTimeInSeconds: Int(tx.blockTime!),
-          value: String(describing: abs(tx.value.amount))
-        )
-        if tx.raw != nil {
-          confTx.raw = tx.raw!.hexEncodedString()
-        }
-        if tx.fee != nil {
-          confTx.fee = String(describing: abs(tx.value.amount))
-        }
-        if tx.isSentTransaction {
-          let recipients = await self.synchronizer.getRecipients(for: tx)
-          if recipients.count > 0 {
-            let addresses = recipients.compactMap {
-              if case let .address(address) = $0 {
-                return address
-              } else {
-                return nil
-              }
-            }
-            if addresses.count > 0 {
-              confTx.toAddress = addresses.first!.stringEncoded
-            }
-          }
-        }
-        if tx.memoCount > 0 {
-          let memos = (try? await self.synchronizer.getMemos(for: tx)) ?? []
-          let textMemos = memos.compactMap {
-            return $0.toString()
-          }
-          confTx.memos = textMemos
-        }
+        if tx.isExpiredUmined ?? false { continue }
+        let confTx = await parseTx(tx: tx)
         out.append(confTx.nsDictionary)
       }
 

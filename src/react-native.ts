@@ -1,3 +1,4 @@
+import { add } from 'biggystring'
 import {
   EventSubscription,
   NativeEventEmitter,
@@ -8,12 +9,15 @@ import {
   Addresses,
   InitializerConfig,
   Network,
+  ShieldFundsInfo,
   SpendFailure,
   SpendInfo,
   SpendSuccess,
   SynchronizerCallbacks,
+  Transaction,
   UnifiedViewingKey
 } from './types'
+export * from './types'
 
 const { RNZcash } = NativeModules
 
@@ -53,7 +57,7 @@ export class Synchronizer {
     this.network = network
   }
 
-  async stop(): Promise<String> {
+  async stop(): Promise<string> {
     this.unsubscribe()
     const result = await RNZcash.stop(this.alias)
     return result
@@ -98,6 +102,16 @@ export class Synchronizer {
     return result
   }
 
+  async shieldFunds(shieldFundsInfo: ShieldFundsInfo): Promise<Transaction> {
+    const result = await RNZcash.shieldFunds(
+      this.alias,
+      shieldFundsInfo.seed,
+      shieldFundsInfo.memo,
+      shieldFundsInfo.threshold
+    )
+    return result
+  }
+
   // Events
 
   subscribe({
@@ -106,7 +120,21 @@ export class Synchronizer {
     onTransactionsChanged,
     onUpdate
   }: SynchronizerCallbacks): void {
-    this.setListener('BalanceEvent', onBalanceChanged)
+    this.setListener('BalanceEvent', event => {
+      const {
+        transparentAvailableZatoshi,
+        transparentTotalZatoshi,
+        saplingAvailableZatoshi,
+        saplingTotalZatoshi
+      } = event
+
+      event.availableZatoshi = add(
+        transparentAvailableZatoshi,
+        saplingAvailableZatoshi
+      )
+      event.totalZatoshi = add(transparentTotalZatoshi, saplingTotalZatoshi)
+      onBalanceChanged(event)
+    })
     this.setListener('StatusEvent', onStatusChanged)
     this.setListener('TransactionEvent', onTransactionsChanged)
     this.setListener('UpdateEvent', onUpdate)
