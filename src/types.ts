@@ -43,6 +43,10 @@ export interface BalanceEvent {
   transparentTotalZatoshi: string
   saplingAvailableZatoshi: string
   saplingTotalZatoshi: string
+
+  /** @deprecated */
+  availableZatoshi: string
+  totalZatoshi: string
 }
 
 export interface StatusEvent {
@@ -86,6 +90,9 @@ export interface Transaction {
   toAddress?: string
   memos: string[]
 }
+
+/** @deprecated Renamed `Transaction` because the package can now return unconfirmed shielding transactions */
+export type ConfirmedTransaction = Transaction
 
 export interface Addresses {
   unifiedAddress: string

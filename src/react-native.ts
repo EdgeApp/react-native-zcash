@@ -1,3 +1,4 @@
+import { add } from 'biggystring'
 import {
   EventSubscription,
   NativeEventEmitter,
@@ -119,7 +120,21 @@ export class Synchronizer {
     onTransactionsChanged,
     onUpdate
   }: SynchronizerCallbacks): void {
-    this.setListener('BalanceEvent', onBalanceChanged)
+    this.setListener('BalanceEvent', event => {
+      const {
+        transparentAvailableZatoshi,
+        transparentTotalZatoshi,
+        saplingAvailableZatoshi,
+        saplingTotalZatoshi
+      } = event
+
+      event.availableZatoshi = add(
+        transparentAvailableZatoshi,
+        saplingAvailableZatoshi
+      )
+      event.totalZatoshi = add(transparentTotalZatoshi, saplingTotalZatoshi)
+      onBalanceChanged(event)
+    })
     this.setListener('StatusEvent', onStatusChanged)
     this.setListener('TransactionEvent', onTransactionsChanged)
     this.setListener('UpdateEvent', onUpdate)
