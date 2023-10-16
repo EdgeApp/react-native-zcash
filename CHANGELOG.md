@@ -1,5 +1,11 @@
 # React Native Zcash
 
+## 0.6.2 (2023-10-16)
+
+- changed: Upgrade ZcashLightClientKit to v2.0.2
+- changed: Make `rescan` async
+- changed: Throttle sync status to only report changes (iOS)
+
 ## 0.6.1 (2023-10-11)
 
 - added: Add `shieldFunds` support
