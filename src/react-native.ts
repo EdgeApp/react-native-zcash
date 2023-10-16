@@ -85,8 +85,8 @@ export class Synchronizer {
     return result
   }
 
-  rescan(): void {
-    RNZcash.rescan(this.alias)
+  async rescan(): Promise<void> {
+    await RNZcash.rescan(this.alias)
   }
 
   async sendToAddress(

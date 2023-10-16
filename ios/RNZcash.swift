@@ -292,8 +292,8 @@ class RNZcash: RCTEventEmitter {
                 wallet.restart = true
                 wallet.initializeProcessorState()
                 wallet.cancellables.forEach { $0.cancel() }
-                wallet.subscribe()
                 try await wallet.synchronizer.start()
+                wallet.subscribe()
                 resolve(nil)
               case .failure:
                 reject("RescanError", "Failed to rescan wallet", genericError)
@@ -431,7 +431,6 @@ class WalletSynchronizer: NSObject {
 
   public func subscribe() {
     self.synchronizer.stateStream
-      .throttle(for: .seconds(0.3), scheduler: DispatchQueue.main, latest: true)
       .sink(receiveValue: { [weak self] state in self?.updateSyncStatus(event: state) })
       .store(in: &cancellables)
     self.synchronizer.stateStream
@@ -452,23 +451,26 @@ class WalletSynchronizer: NSObject {
   }
 
   func updateSyncStatus(event: SynchronizerState) {
+    var status = self.status
 
     if !self.fullySynced {
       switch event.internalSyncStatus {
       case .syncing:
-        self.status = "SYNCING"
+        status = "SYNCING"
         self.restart = false
       case .synced:
         if self.restart {
           // The synchronizer emits "synced" status after starting a rescan. We need to ignore these.
           return
         }
-        self.status = "SYNCED"
+        status = "SYNCED"
         self.fullySynced = true
       default:
         break
       }
 
+      if status == self.status { return }
+      self.status = status
       let data: NSDictionary = ["alias": self.alias, "name": self.status]
       emit("StatusEvent", data)
     }
