@@ -558,7 +558,7 @@ class WalletSynchronizer: NSObject {
       confTx.raw = tx.raw!.hexEncodedString()
     }
     if tx.fee != nil {
-      confTx.fee = String(describing: abs(tx.value.amount))
+      confTx.fee = String(describing: abs(tx.fee!.amount))
     }
     if tx.isSentTransaction {
       let recipients = await self.synchronizer.getRecipients(for: tx)
