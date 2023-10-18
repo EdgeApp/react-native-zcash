@@ -410,6 +410,7 @@ class WalletSynchronizer: NSObject {
   var processorState: ProcessorState
   var cancellables: [AnyCancellable] = []
   var balances: TotalBalances
+  var firstSyncEmitTransactionsHack: Bool
 
   init(alias: String, initializer: Initializer, emitter: @escaping (String, Any) -> Void) throws {
     self.alias = alias
@@ -417,6 +418,7 @@ class WalletSynchronizer: NSObject {
     self.status = "STOPPED"
     self.emit = emitter
     self.fullySynced = false
+    self.firstSyncEmitTransactionsHack = false
     self.restart = false
     self.processorState = ProcessorState(
       scanProgress: 0,
@@ -464,6 +466,16 @@ class WalletSynchronizer: NSObject {
           return
         }
         status = "SYNCED"
+
+        // HACK: do this once the synchronizer finishes the first time. For some reason the SDK isn't returning these through the eventStream
+        if !self.firstSyncEmitTransactionsHack {
+          self.firstSyncEmitTransactionsHack = true
+          Task {
+            let txs = await self.synchronizer.transactions
+            emitTxs(transactions: txs)
+          }
+        }
+
         self.fullySynced = true
       default:
         break
