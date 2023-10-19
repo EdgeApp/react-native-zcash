@@ -1,5 +1,12 @@
 # React Native Zcash
 
+## 0.6.3 (2023-10-19)
+
+iOS:
+
+- changed: Emit all txs the first time the synchronizer says it's synced. This is a workaround for the synchronizer not publishing some transactions
+- fixed: Fix fee amount returned with transaction.
+
 ## 0.6.2 (2023-10-16)
 
 - changed: Upgrade ZcashLightClientKit to v2.0.2

@@ -294,6 +294,7 @@ class RNZcash: RCTEventEmitter {
                 wallet.cancellables.forEach { $0.cancel() }
                 try await wallet.synchronizer.start()
                 wallet.subscribe()
+                wallet.firstSyncEmitTransactionsHack = false
                 resolve(nil)
               case .failure:
                 reject("RescanError", "Failed to rescan wallet", genericError)
