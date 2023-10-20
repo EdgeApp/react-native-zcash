@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.4 (2023-10-20)
+
 - changed: (iOS) Upgrade ZcashLightClientKit to v2.0.3
 - removed: (iOS) Remove transaction workaround added previously in v0.6.3
 
