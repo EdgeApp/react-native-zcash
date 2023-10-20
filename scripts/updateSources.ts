@@ -25,8 +25,8 @@ function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/zcash/ZcashLightClientKit.git',
-    // 2.0.2:
-    'c1cc041ab0b88324c41348ad958b68ff99a98015'
+    // 2.0.3:
+    '23486ccfcd1a9d3da551c7423dd65bfe4abf92f1'
   )
   getRepo(
     'zcash-light-client-ffi',
