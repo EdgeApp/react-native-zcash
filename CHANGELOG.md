@@ -1,5 +1,10 @@
 # React Native Zcash
 
+## Unreleased
+
+- changed: (iOS) Upgrade ZcashLightClientKit to v2.0.3
+- removed: (iOS) Remove transaction workaround added previously in v0.6.3
+
 ## 0.6.3 (2023-10-19)
 
 iOS:
