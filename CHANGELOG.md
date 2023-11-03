@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.6.5 (2023-11-03)
+
+- changed: Updated chackpoints
+
 ## 0.6.4 (2023-10-20)
 
 - changed: (iOS) Upgrade ZcashLightClientKit to v2.0.3
