@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.6.6 (2024-01-14)
+
+- changed: Updated chackpoints
+
 ## 0.6.5 (2023-11-03)
 
 - changed: Updated chackpoints
