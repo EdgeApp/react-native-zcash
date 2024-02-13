@@ -2,13 +2,17 @@
 
 ## Unreleased
 
+## 0.6.7 (2024-02-13)
+
+- changed: Updated checkpoints
+
 ## 0.6.6 (2024-01-14)
 
-- changed: Updated chackpoints
+- changed: Updated checkpoints
 
 ## 0.6.5 (2023-11-03)
 
-- changed: Updated chackpoints
+- changed: Updated checkpoints
 
 ## 0.6.4 (2023-10-20)
 
