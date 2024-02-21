@@ -141,10 +141,12 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         alias: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
-        wallet.close()
-        synchronizerMap.remove(alias)
-        promise.resolve(null)
+        promise.wrap {
+            val wallet = getWallet(alias)
+            wallet.close()
+            synchronizerMap.remove(alias)
+            return@wrap null
+        }
     }
 
     private suspend fun parseTx(
@@ -192,8 +194,10 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            wallet.rewindToNearestHeight(wallet.latestBirthdayHeight)
-            promise.resolve(null)
+            promise.wrap {
+                wallet.rewindToNearestHeight(wallet.latestBirthdayHeight)
+                return@wrap null
+            }
         }
     }
 
@@ -203,15 +207,17 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         network: String = "mainnet",
         promise: Promise,
     ) {
-        val seedPhrase = SeedPhrase.new(seed)
         moduleScope.launch {
-            val keys =
-                DerivationTool.getInstance().deriveUnifiedFullViewingKeys(
-                    seedPhrase.toByteArray(),
-                    networks.getOrDefault(network, ZcashNetwork.Mainnet),
-                    DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS,
-                )[0]
-            promise.resolve(keys.encoding)
+            promise.wrap {
+                val seedPhrase = SeedPhrase.new(seed)
+                val keys =
+                    DerivationTool.getInstance().deriveUnifiedFullViewingKeys(
+                        seedPhrase.toByteArray(),
+                        networks.getOrDefault(network, ZcashNetwork.Mainnet),
+                        DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS,
+                    )[0]
+                return@wrap keys.encoding
+            }
         }
     }
 
@@ -266,9 +272,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            val seedPhrase = SeedPhrase.new(seed)
-            val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
             try {
+                val seedPhrase = SeedPhrase.new(seed)
+                val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
                 val internalId =
                     wallet.sendToAddress(
                         usk,
@@ -297,9 +303,9 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            val seedPhrase = SeedPhrase.new(seed)
-            val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
             try {
+                val seedPhrase = SeedPhrase.new(seed)
+                val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
                 val internalId =
                     wallet.shieldFunds(
                         usk,
@@ -330,15 +336,17 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            val unifiedAddress = wallet.getUnifiedAddress(Account(0))
-            val saplingAddress = wallet.getSaplingAddress(Account(0))
-            val transparentAddress = wallet.getTransparentAddress(Account(0))
+            promise.wrap {
+                val unifiedAddress = wallet.getUnifiedAddress(Account(0))
+                val saplingAddress = wallet.getSaplingAddress(Account(0))
+                val transparentAddress = wallet.getTransparentAddress(Account(0))
 
-            val map = Arguments.createMap()
-            map.putString("unifiedAddress", unifiedAddress)
-            map.putString("saplingAddress", saplingAddress)
-            map.putString("transparentAddress", transparentAddress)
-            promise.resolve(map)
+                val map = Arguments.createMap()
+                map.putString("unifiedAddress", unifiedAddress)
+                map.putString("saplingAddress", saplingAddress)
+                map.putString("transparentAddress", transparentAddress)
+                return@wrap map
+            }
         }
     }
 
