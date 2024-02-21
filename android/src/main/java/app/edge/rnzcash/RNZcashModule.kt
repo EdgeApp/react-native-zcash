@@ -54,8 +54,13 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             if (!synchronizerMap.containsKey(alias)) {
                 synchronizerMap[alias] =
                     Synchronizer.new(
-                        reactApplicationContext, network, alias, endpoint, seedPhrase.toByteArray(),
-                        BlockHeight.new(network, birthdayHeight.toLong()), initMode,
+                        reactApplicationContext,
+                        network,
+                        alias,
+                        endpoint,
+                        seedPhrase.toByteArray(),
+                        BlockHeight.new(network, birthdayHeight.toLong()),
+                        initMode,
                     ) as SdkSynchronizer
             }
             val wallet = getWallet(alias)
