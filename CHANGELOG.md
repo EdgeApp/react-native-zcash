@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fixed: (android) Wrap sdk methods in try/catch to prevent native crashes
+
 ## 0.6.7 (2024-02-13)
 
 - changed: Updated checkpoints
