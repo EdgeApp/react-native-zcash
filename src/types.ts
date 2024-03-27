@@ -43,6 +43,8 @@ export interface BalanceEvent {
   transparentTotalZatoshi: string
   saplingAvailableZatoshi: string
   saplingTotalZatoshi: string
+  orchardAvailableZatoshi: string
+  orchardTotalZatoshi: string
 
   /** @deprecated */
   availableZatoshi: string

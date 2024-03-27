@@ -125,14 +125,19 @@ export class Synchronizer {
         transparentAvailableZatoshi,
         transparentTotalZatoshi,
         saplingAvailableZatoshi,
-        saplingTotalZatoshi
+        saplingTotalZatoshi,
+        orchardAvailableZatoshi,
+        orchardTotalZatoshi
       } = event
 
       event.availableZatoshi = add(
-        transparentAvailableZatoshi,
-        saplingAvailableZatoshi
+        add(transparentAvailableZatoshi, saplingAvailableZatoshi),
+        orchardAvailableZatoshi
       )
-      event.totalZatoshi = add(transparentTotalZatoshi, saplingTotalZatoshi)
+      event.totalZatoshi = add(
+        add(transparentTotalZatoshi, saplingTotalZatoshi),
+        orchardTotalZatoshi
+      )
       onBalanceChanged(event)
     })
     this.setListener('StatusEvent', onStatusChanged)
