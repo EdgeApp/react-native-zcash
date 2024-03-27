@@ -529,14 +529,6 @@ class WalletSynchronizer: NSObject {
     let saplingAvailableZatoshi = shieldedBalance.verified
     let saplingTotalZatoshi = shieldedBalance.total
 
-    if transparentAvailableZatoshi == self.balances.transparentAvailableZatoshi
-      && transparentTotalZatoshi == self.balances.transparentTotalZatoshi
-      && saplingAvailableZatoshi == self.balances.saplingAvailableZatoshi
-      && saplingTotalZatoshi == self.balances.saplingTotalZatoshi
-    {
-      return
-    }
-
     self.balances = TotalBalances(
       transparentAvailableZatoshi: transparentAvailableZatoshi,
       transparentTotalZatoshi: transparentTotalZatoshi,
