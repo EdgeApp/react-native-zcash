@@ -9,12 +9,14 @@ import {
   Addresses,
   InitializerConfig,
   Network,
+  ProposalSuccess,
   ShieldFundsInfo,
   SpendFailure,
   SpendInfo,
   SpendSuccess,
   SynchronizerCallbacks,
   Transaction,
+  TransferSpendInfo,
   UnifiedViewingKey
 } from './types'
 export * from './types'
@@ -87,6 +89,18 @@ export class Synchronizer {
 
   async rescan(): Promise<void> {
     await RNZcash.rescan(this.alias)
+  }
+
+  async proposeTransfer(
+    spendInfo: TransferSpendInfo
+  ): Promise<ProposalSuccess> {
+    const result = await RNZcash.proposeTransfer(
+      this.alias,
+      spendInfo.zatoshi,
+      spendInfo.toAddress,
+      spendInfo.memo
+    )
+    return result
   }
 
   async sendToAddress(

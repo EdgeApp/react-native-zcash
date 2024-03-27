@@ -270,6 +270,34 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun proposeTransfer(
+        alias: String,
+        zatoshi: String,
+        toAddress: String,
+        memo: String = "",
+        promise: Promise,
+    ) {
+        val wallet = getWallet(alias)
+        wallet.coroutineScope.launch {
+            try {
+                val proposal =
+                    wallet.proposeTransfer(
+                        Account.DEFAULT,
+                        toAddress,
+                        Zatoshi(zatoshi.toLong()),
+                        memo,
+                    )
+                val map = Arguments.createMap()
+                map.putInt("transactionCount", proposal.transactionCount())
+                map.putString("totalFee", proposal.totalFeeRequired().value.toString())
+                promise.resolve(map)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
+        }
+    }
+
+    @ReactMethod
     fun sendToAddress(
         alias: String,
         zatoshi: String,

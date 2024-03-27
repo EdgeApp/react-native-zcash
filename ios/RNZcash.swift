@@ -203,6 +203,50 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
+  @objc func proposeTransfer(
+    _ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        let amount = Int64(zatoshi)
+        if amount == nil {
+          reject("ProposeTransferError", "Amount is invalid", genericError)
+          return
+        }
+
+        do {
+          var sdkMemo: Memo? = nil
+          if memo != "" {
+            sdkMemo = try Memo(string: memo)
+          }
+          let proposal = try await wallet.synchronizer.proposeTransfer(
+            accountIndex: 0,
+            recipient: Recipient(toAddress, network: wallet.synchronizer.network.networkType),
+            amount: Zatoshi(amount!),
+            memo: sdkMemo
+          )
+
+          let out: NSMutableDictionary = [
+            "transactionCount": proposal.transactionCount(),
+            "totalFee": String(proposal.totalFeeRequired().amount),
+          ]
+          resolve(out)
+        } catch let error as ZcashError {
+          if case .rustCreateToAddress(let message) = error {
+            // error message with amounts
+            reject("proposeTransferError", message, error)
+          } else {
+            reject("proposeTransferError", "Failed to propose transfer", error)
+          }
+        }
+      } else {
+        reject("ProposeTransferError", "Wallet does not exist", genericError)
+      }
+    }
+  }
+
   @objc func sendToAddress(
     _ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String, _ seed: String,
     resolver resolve: @escaping RCTPromiseResolveBlock,
