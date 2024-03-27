@@ -107,22 +107,28 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 }
             }
             combine(
-                wallet.transparentBalances,
+                wallet.transparentBalance,
                 wallet.saplingBalances,
-            ) { transparentBalances, saplingBalances ->
+                wallet.orchardBalances,
+            ) { transparentBalance, saplingBalances, orchardBalances ->
                 return@combine mapOf(
-                    "transparentBalances" to transparentBalances,
+                    "transparentBalance" to transparentBalance,
                     "saplingBalances" to saplingBalances,
+                    "orchardBalances" to orchardBalances,
                 )
             }.collectWith(scope) { map ->
-                val transparentBalances = map["transparentBalances"]
-                val saplingBalances = map["saplingBalances"]
+                val transparentBalance = map["transparentBalance"] as Zatoshi?
+                val saplingBalances = map["saplingBalances"] as WalletBalance?
+                val orchardBalances = map["orchardBalances"] as WalletBalance?
 
-                val transparentAvailableZatoshi = transparentBalances?.available ?: Zatoshi(0L)
-                val transparentTotalZatoshi = transparentBalances?.total ?: Zatoshi(0L)
+                val transparentAvailableZatoshi = transparentBalance ?: Zatoshi(0L)
+                val transparentTotalZatoshi = transparentBalance ?: Zatoshi(0L)
 
                 val saplingAvailableZatoshi = saplingBalances?.available ?: Zatoshi(0L)
                 val saplingTotalZatoshi = saplingBalances?.total ?: Zatoshi(0L)
+
+                val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
+                val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
 
                 sendEvent("BalanceEvent") { args ->
                     args.putString("alias", alias)
@@ -130,6 +136,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     args.putString("transparentTotalZatoshi", transparentTotalZatoshi.value.toString())
                     args.putString("saplingAvailableZatoshi", saplingAvailableZatoshi.value.toString())
                     args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
+                    args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
+                    args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
                 }
             }
             return@wrap null

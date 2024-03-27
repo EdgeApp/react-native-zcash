@@ -36,12 +36,16 @@ struct TotalBalances {
   var transparentTotalZatoshi: Zatoshi
   var saplingAvailableZatoshi: Zatoshi
   var saplingTotalZatoshi: Zatoshi
+  var orchardAvailableZatoshi: Zatoshi
+  var orchardTotalZatoshi: Zatoshi
   var dictionary: [String: Any] {
     return [
       "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
       "transparentTotalZatoshi": String(transparentTotalZatoshi.amount),
       "saplingAvailableZatoshi": String(saplingAvailableZatoshi.amount),
       "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
+      "orchardAvailableZatoshi": String(orchardAvailableZatoshi.amount),
+      "orchardTotalZatoshi": String(orchardTotalZatoshi.amount),
     ]
   }
   var nsDictionary: NSDictionary {
@@ -195,6 +199,50 @@ class RNZcash: RCTEventEmitter {
         resolve(height)
       } catch {
         reject("getLatestNetworkHeightGrpc", "Failed to query blockheight", error)
+      }
+    }
+  }
+
+  @objc func proposeTransfer(
+    _ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        let amount = Int64(zatoshi)
+        if amount == nil {
+          reject("ProposeTransferError", "Amount is invalid", genericError)
+          return
+        }
+
+        do {
+          var sdkMemo: Memo? = nil
+          if memo != "" {
+            sdkMemo = try Memo(string: memo)
+          }
+          let proposal = try await wallet.synchronizer.proposeTransfer(
+            accountIndex: 0,
+            recipient: Recipient(toAddress, network: wallet.synchronizer.network.networkType),
+            amount: Zatoshi(amount!),
+            memo: sdkMemo
+          )
+
+          let out: NSMutableDictionary = [
+            "transactionCount": proposal.transactionCount(),
+            "totalFee": String(proposal.totalFeeRequired().amount),
+          ]
+          resolve(out)
+        } catch let error as ZcashError {
+          if case .rustCreateToAddress(let message) = error {
+            // error message with amounts
+            reject("proposeTransferError", message, error)
+          } else {
+            reject("proposeTransferError", "Failed to propose transfer", error)
+          }
+        }
+      } else {
+        reject("ProposeTransferError", "Wallet does not exist", genericError)
       }
     }
   }
@@ -426,7 +474,9 @@ class WalletSynchronizer: NSObject {
       transparentAvailableZatoshi: Zatoshi(0),
       transparentTotalZatoshi: Zatoshi(0),
       saplingAvailableZatoshi: Zatoshi(0),
-      saplingTotalZatoshi: Zatoshi(0))
+      saplingTotalZatoshi: Zatoshi(0),
+      orchardAvailableZatoshi: Zatoshi(0),
+      orchardTotalZatoshi: Zatoshi(0))
   }
 
   public func subscribe() {
@@ -516,32 +566,32 @@ class WalletSynchronizer: NSObject {
       transparentAvailableZatoshi: Zatoshi(0),
       transparentTotalZatoshi: Zatoshi(0),
       saplingAvailableZatoshi: Zatoshi(0),
-      saplingTotalZatoshi: Zatoshi(0))
+      saplingTotalZatoshi: Zatoshi(0),
+      orchardAvailableZatoshi: Zatoshi(0),
+      orchardTotalZatoshi: Zatoshi(0))
   }
 
   func updateBalanceState(event: SynchronizerState) {
-    let transparentBalance = event.transparentBalance
-    let shieldedBalance = event.shieldedBalance
+    let transparentBalance = event.accountBalance?.unshielded ?? Zatoshi(0)
+    let shieldedBalance = event.accountBalance?.saplingBalance ?? PoolBalance.zero
+    let orchardBalance = event.accountBalance?.orchardBalance ?? PoolBalance.zero
 
-    let transparentAvailableZatoshi = transparentBalance.verified
-    let transparentTotalZatoshi = transparentBalance.total
+    let transparentAvailableZatoshi = transparentBalance
+    let transparentTotalZatoshi = transparentBalance
 
-    let saplingAvailableZatoshi = shieldedBalance.verified
-    let saplingTotalZatoshi = shieldedBalance.total
+    let saplingAvailableZatoshi = shieldedBalance.spendableValue
+    let saplingTotalZatoshi = shieldedBalance.total()
 
-    if transparentAvailableZatoshi == self.balances.transparentAvailableZatoshi
-      && transparentTotalZatoshi == self.balances.transparentTotalZatoshi
-      && saplingAvailableZatoshi == self.balances.saplingAvailableZatoshi
-      && saplingTotalZatoshi == self.balances.saplingTotalZatoshi
-    {
-      return
-    }
+    let orchardAvailableZatoshi = orchardBalance.spendableValue
+    let orchardTotalZatoshi = orchardBalance.total()
 
     self.balances = TotalBalances(
       transparentAvailableZatoshi: transparentAvailableZatoshi,
       transparentTotalZatoshi: transparentTotalZatoshi,
       saplingAvailableZatoshi: saplingAvailableZatoshi,
-      saplingTotalZatoshi: saplingTotalZatoshi
+      saplingTotalZatoshi: saplingTotalZatoshi,
+      orchardAvailableZatoshi: orchardAvailableZatoshi,
+      orchardTotalZatoshi: orchardTotalZatoshi
     )
     let data = NSMutableDictionary(dictionary: self.balances.nsDictionary)
     data["alias"] = self.alias

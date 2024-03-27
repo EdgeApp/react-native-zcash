@@ -9,12 +9,14 @@ import {
   Addresses,
   InitializerConfig,
   Network,
+  ProposalSuccess,
   ShieldFundsInfo,
   SpendFailure,
   SpendInfo,
   SpendSuccess,
   SynchronizerCallbacks,
   Transaction,
+  TransferSpendInfo,
   UnifiedViewingKey
 } from './types'
 export * from './types'
@@ -89,6 +91,18 @@ export class Synchronizer {
     await RNZcash.rescan(this.alias)
   }
 
+  async proposeTransfer(
+    spendInfo: TransferSpendInfo
+  ): Promise<ProposalSuccess> {
+    const result = await RNZcash.proposeTransfer(
+      this.alias,
+      spendInfo.zatoshi,
+      spendInfo.toAddress,
+      spendInfo.memo
+    )
+    return result
+  }
+
   async sendToAddress(
     spendInfo: SpendInfo
   ): Promise<SpendSuccess | SpendFailure> {
@@ -125,14 +139,19 @@ export class Synchronizer {
         transparentAvailableZatoshi,
         transparentTotalZatoshi,
         saplingAvailableZatoshi,
-        saplingTotalZatoshi
+        saplingTotalZatoshi,
+        orchardAvailableZatoshi,
+        orchardTotalZatoshi
       } = event
 
       event.availableZatoshi = add(
-        transparentAvailableZatoshi,
-        saplingAvailableZatoshi
+        add(transparentAvailableZatoshi, saplingAvailableZatoshi),
+        orchardAvailableZatoshi
       )
-      event.totalZatoshi = add(transparentTotalZatoshi, saplingTotalZatoshi)
+      event.totalZatoshi = add(
+        add(transparentTotalZatoshi, saplingTotalZatoshi),
+        orchardTotalZatoshi
+      )
       onBalanceChanged(event)
     })
     this.setListener('StatusEvent', onStatusChanged)

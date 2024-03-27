@@ -10,10 +10,12 @@ export interface InitializerConfig {
   newWallet: boolean
 }
 
-export interface SpendInfo {
+export interface TransferSpendInfo {
   zatoshi: string
   toAddress: string
   memo?: string
+}
+export interface SpendInfo extends TransferSpendInfo {
   mnemonicSeed: string
 }
 
@@ -21,6 +23,11 @@ export interface ShieldFundsInfo {
   seed: string
   memo: string
   threshold: string
+}
+
+export interface ProposalSuccess {
+  transactionCount: number
+  totalFee: string
 }
 
 export interface SpendSuccess {
@@ -43,6 +50,8 @@ export interface BalanceEvent {
   transparentTotalZatoshi: string
   saplingAvailableZatoshi: string
   saplingTotalZatoshi: string
+  orchardAvailableZatoshi: string
+  orchardTotalZatoshi: string
 
   /** @deprecated */
   availableZatoshi: string

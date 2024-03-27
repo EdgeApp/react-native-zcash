@@ -24,15 +24,15 @@ async function main(): Promise<void> {
 function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
-    'https://github.com/zcash/ZcashLightClientKit.git',
-    // 2.0.3:
-    '23486ccfcd1a9d3da551c7423dd65bfe4abf92f1'
+    'https://github.com/Electric-Coin-Company/zcash-swift-wallet-sdk.git',
+    // 2.1.0:
+    '8909f237225676be70dfeaa103b77139481dfd86'
   )
   getRepo(
     'zcash-light-client-ffi',
     'https://github.com/zcash-hackworks/zcash-light-client-ffi.git',
-    // 0.4.0:
-    '9bc5877ef6302e877922f79ebead52e50bce94fd'
+    // 0.7.1:
+    'c7e5158edf5e62af15492d30237163b78af35ce9'
   )
 }
 
