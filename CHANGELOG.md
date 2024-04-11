@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.6.12 (2024-04-10)
+
+- fixed: Correct packaging mistake the previous release
+
 ## 0.6.11 (2024-04-10)
 
 - changed: Updated checkpoints
