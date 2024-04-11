@@ -5,8 +5,9 @@
 
 import { execSync } from 'child_process'
 import { deepList, justFiles, makeNodeDisklet, navigateDisklet } from 'disklet'
-import { existsSync, mkdirSync } from 'fs'
+import { mkdirSync } from 'fs'
 import { join } from 'path'
+import rimraf from 'rimraf'
 
 import { copyCheckpoints } from './copyCheckpoints'
 
@@ -14,7 +15,8 @@ const disklet = makeNodeDisklet(join(__dirname, '../'))
 const tmp = join(__dirname, '../tmp')
 
 async function main(): Promise<void> {
-  if (!existsSync(tmp)) mkdirSync(tmp)
+  rimraf.sync(tmp)
+  mkdirSync(tmp)
   await downloadSources()
   await rebuildXcframework()
   await copySwift()
@@ -124,11 +126,9 @@ async function copySwift(): Promise<void> {
 function getRepo(name: string, uri: string, hash: string): void {
   const path = join(tmp, name)
 
-  // Clone (if needed):
-  if (!existsSync(path)) {
-    console.log(`Cloning ${name}...`)
-    loudExec(['git', 'clone', uri, name])
-  }
+  // Clone
+  console.log(`Cloning ${name}...`)
+  loudExec(['git', 'clone', uri, name])
 
   // Checkout:
   console.log(`Checking out ${name}...`)
