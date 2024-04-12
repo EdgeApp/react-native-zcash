@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fixed: Update the packaging scripts to clean leftover files.
+
 ## 0.6.12 (2024-04-10)
 
 - fixed: Correct packaging mistake the previous release

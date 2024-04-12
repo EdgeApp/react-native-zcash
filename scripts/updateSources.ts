@@ -92,6 +92,7 @@ async function copySwift(): Promise<void> {
     'tmp/ZCashLightClientKit/Sources'
   )
   const toDisklet = navigateDisklet(disklet, 'ios')
+  await toDisklet.delete('ZCashLightClientKit/')
   const files = justFiles(await deepList(fromDisklet, 'ZCashLightClientKit/'))
 
   for (const file of files) {
