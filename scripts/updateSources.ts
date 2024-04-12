@@ -62,12 +62,6 @@ async function rebuildXcframework(): Promise<void> {
       'tmp/zcash-light-client-ffi/releases/XCFramework/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/libzcashlc'
     )
   )
-  await disklet.setText(
-    'ios/ZCashLightClientKit/Rust/zcashlc.h',
-    await disklet.getText(
-      'tmp/zcash-light-client-ffi/releases/XCFramework/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/Headers/zcashlc.h'
-    )
-  )
 
   // Build the XCFramework:
   loudExec(tmp, [
@@ -117,6 +111,14 @@ async function copySwift(): Promise<void> {
 
     await toDisklet.setText(file, fixed)
   }
+
+  // Copy the Rust header into the Swift location:
+  await disklet.setText(
+    'ios/ZCashLightClientKit/Rust/zcashlc.h',
+    await disklet.getText(
+      'tmp/zcash-light-client-ffi/releases/XCFramework/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/Headers/zcashlc.h'
+    )
+  )
 }
 
 /**
