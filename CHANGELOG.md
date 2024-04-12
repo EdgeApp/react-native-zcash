@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.6.14 (2024-04-12)
+
+- fixed: Include missing Rust header file.
+
 ## 0.6.13 (2024-04-12)
 
 - fixed: Update the packaging scripts to clean leftover files.
