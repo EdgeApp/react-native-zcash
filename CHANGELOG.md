@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- fixed: Update the packaging scripts to clean leftover files.
+- fixed: Update the packaging scripts to correctly report errors, so we don't send failed packages to NPM.
+
 ## 0.6.12 (2024-04-10)
 
 - fixed: Correct packaging mistake the previous release

@@ -5,7 +5,7 @@
   "homepage": "https://github.com/EdgeApp/react-native-zcash",
   "repository": {
     "type": "git",
-    "url": "git@github.com:EdgeApp/react-native-zcash.git"
+    "url": "git+ssh://git@github.com/EdgeApp/react-native-zcash.git"
   },
   "license": "MIT",
   "author": "Airbitz, Inc.",
