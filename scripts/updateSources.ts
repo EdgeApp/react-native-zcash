@@ -161,4 +161,7 @@ function loudExec(argv: string[]): void {
   })
 }
 
-main().catch(error => console.log(error))
+main().catch(error => {
+  console.log(error)
+  process.exit(1)
+})
