@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.0 (2024-04-22)
+
+- added: Support Orchard pool
+- added: Support ZIP-317 fees
+- changed: (Android) Upgrade zcash-android-sdk to v2.1.0
+- changed: (iOS) Upgrade zcash-swift-wallet-sdk to v2.1.5
+- changed: Updated checkpoints
+
 ## 0.6.14 (2024-04-12)
 
 - fixed: Include missing Rust header file.
