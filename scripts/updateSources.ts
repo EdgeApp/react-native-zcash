@@ -25,14 +25,14 @@ function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/Electric-Coin-Company/zcash-swift-wallet-sdk.git',
-    // 2.1.0:
-    '8fa86ff37f85c74bd6585d59f38db2593e11d802'
+    // 2.1.5:
+    '31a584801302c04f8c644f652d44d25406007f5e'
   )
   getRepo(
     'zcash-light-client-ffi',
     'https://github.com/Electric-Coin-Company/zcash-light-client-ffi.git',
-    // 0.7.1:
-    'e2d8763f3a963fb0026b6160af2d211b527453cd'
+    // 0.8.0:
+    '9314c83d7a09d88e1c0bd3ff3738a50833325059'
   )
 }
 
