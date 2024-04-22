@@ -107,22 +107,28 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 }
             }
             combine(
-                wallet.transparentBalances,
+                wallet.transparentBalance,
                 wallet.saplingBalances,
-            ) { transparentBalances, saplingBalances ->
-                return@combine mapOf(
-                    "transparentBalances" to transparentBalances,
-                    "saplingBalances" to saplingBalances,
+                wallet.orchardBalances,
+            ) { transparentBalance: Zatoshi?, saplingBalances: WalletBalance?, orchardBalances: WalletBalance? ->
+                return@combine Balances(
+                    transparentBalance = transparentBalance,
+                    saplingBalances = saplingBalances,
+                    orchardBalances = orchardBalances,
                 )
             }.collectWith(scope) { map ->
-                val transparentBalances = map["transparentBalances"]
-                val saplingBalances = map["saplingBalances"]
+                val transparentBalance = map.transparentBalance
+                val saplingBalances = map.saplingBalances
+                val orchardBalances = map.orchardBalances
 
-                val transparentAvailableZatoshi = transparentBalances?.available ?: Zatoshi(0L)
-                val transparentTotalZatoshi = transparentBalances?.total ?: Zatoshi(0L)
+                val transparentAvailableZatoshi = transparentBalance ?: Zatoshi(0L)
+                val transparentTotalZatoshi = transparentBalance ?: Zatoshi(0L)
 
                 val saplingAvailableZatoshi = saplingBalances?.available ?: Zatoshi(0L)
                 val saplingTotalZatoshi = saplingBalances?.total ?: Zatoshi(0L)
+
+                val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
+                val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
 
                 sendEvent("BalanceEvent") { args ->
                     args.putString("alias", alias)
@@ -130,6 +136,8 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     args.putString("transparentTotalZatoshi", transparentTotalZatoshi.value.toString())
                     args.putString("saplingAvailableZatoshi", saplingAvailableZatoshi.value.toString())
                     args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
+                    args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
+                    args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
                 }
             }
             return@wrap null
@@ -257,6 +265,34 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                         )
                     }
                 }
+            }
+        }
+    }
+
+    @ReactMethod
+    fun proposeTransfer(
+        alias: String,
+        zatoshi: String,
+        toAddress: String,
+        memo: String = "",
+        promise: Promise,
+    ) {
+        val wallet = getWallet(alias)
+        wallet.coroutineScope.launch {
+            try {
+                val proposal =
+                    wallet.proposeTransfer(
+                        Account.DEFAULT,
+                        toAddress,
+                        Zatoshi(zatoshi.toLong()),
+                        memo,
+                    )
+                val map = Arguments.createMap()
+                map.putInt("transactionCount", proposal.transactionCount())
+                map.putString("totalFee", proposal.totalFeeRequired().value.toString())
+                promise.resolve(map)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
             }
         }
     }
@@ -411,4 +447,10 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             sb.append(String.format("%02x", this[i--]))
         return sb.toString()
     }
+
+    data class Balances(
+        val transparentBalance: Zatoshi?,
+        val saplingBalances: WalletBalance?,
+        val orchardBalances: WalletBalance?,
+    )
 }
