@@ -28,6 +28,6 @@ Pod::Spec.new do |s|
 
   s.dependency "MnemonicSwift", "~> 2.2"
   s.dependency "gRPC-Swift", "~> 1.8"
-  s.dependency "SQLite.swift", "~> 0.12"
+  s.dependency "SQLite.swift/standalone", "~> 0.14"
   s.dependency "React-Core"
 end

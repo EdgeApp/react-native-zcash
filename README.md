@@ -18,6 +18,7 @@ pod 'CNIODarwin', :modular_headers => true
 pod 'CNIOHTTPParser', :modular_headers => true
 pod 'CNIOLinux', :modular_headers => true
 pod 'CNIOWindows', :modular_headers => true
+pod 'sqlite3', :modular_headers => true
 ```
 
 On the Android side, you may need to configure an explicit Kotlin version, so all your native dependencies will be compatible with one another. Simply define `kotlinVersion` in your `android/build.gradle` file:
