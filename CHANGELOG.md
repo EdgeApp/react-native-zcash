@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.2 (2024-05-17)
+
 - fixed: Pause synchronizer events until JavaScript is ready to receive them.
 
 ## 0.7.1 (2024-05-11)
