@@ -114,7 +114,7 @@ async function copySwift(): Promise<void> {
 
   // Copy the Rust header into the Swift location:
   await disklet.setText(
-    'ios/ZCashLightClientKit/Rust/zcashlc.h',
+    'ios/zcashlc.h',
     await disklet.getText(
       'tmp/zcash-light-client-ffi/releases/XCFramework/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/Headers/zcashlc.h'
     )

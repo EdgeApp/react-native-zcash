@@ -19,6 +19,7 @@ Pod::Spec.new do |s|
     "ios/react-native-zcash-Bridging-Header.h",
     "ios/RNZcash.m",
     "ios/RNZcash.swift",
+    "ios/zcashlc.h",
     "ios/ZCashLightClientKit/**/*.swift"
   s.resource_bundles = {
     "zcash-mainnet" => "ios/ZCashLightClientKit/Resources/checkpoints/mainnet/*.json",
