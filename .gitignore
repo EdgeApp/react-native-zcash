@@ -2,6 +2,7 @@
 /android/build/
 /ios/libzcashlc.xcframework/
 /ios/ZCashLightClientKit/
+/ios/zcashlc.h
 /lib/
 /tmp/
 
