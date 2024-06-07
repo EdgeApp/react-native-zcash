@@ -40,11 +40,6 @@ export interface SpendFailure {
   errorCode?: string
 }
 
-export interface UnifiedViewingKey {
-  extfvk: string
-  extpub: string
-}
-
 export interface BalanceEvent {
   transparentAvailableZatoshi: string
   transparentTotalZatoshi: string

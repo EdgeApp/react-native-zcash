@@ -16,8 +16,7 @@ import {
   SpendSuccess,
   SynchronizerCallbacks,
   Transaction,
-  TransferSpendInfo,
-  UnifiedViewingKey
+  TransferSpendInfo
 } from './types'
 export * from './types'
 
@@ -29,7 +28,7 @@ export const Tools = {
   deriveViewingKey: async (
     seedBytesHex: string,
     network: Network
-  ): Promise<UnifiedViewingKey> => {
+  ): Promise<string> => {
     const result = await RNZcash.deriveViewingKey(seedBytesHex, network)
     return result
   },
