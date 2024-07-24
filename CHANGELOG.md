@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 0.7.5 (2024-07-24)
+
+- changed: Updated checkpoints
 - fixed: Fix deriveViewingKey return value type
 
 ## 0.7.4 (2024-06-06)
