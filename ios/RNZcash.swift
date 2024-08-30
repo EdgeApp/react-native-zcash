@@ -441,16 +441,16 @@ class RNZcash: RCTEventEmitter {
 
   // Events
   public func sendToJs(name: String, data: Any) {
-    if (hasListeners) {
+    if hasListeners {
       self.sendEvent(withName: name, body: data)
     }
   }
 
-  override func startObserving() -> Void {
+  override func startObserving() {
     hasListeners = true
   }
 
-  override func stopObserving() -> Void {
+  override func stopObserving() {
     hasListeners = false
   }
 
