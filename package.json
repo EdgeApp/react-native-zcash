@@ -1,6 +1,6 @@
 {
   "name": "react-native-zcash",
-  "version": "0.7.7",
+  "version": "0.8.0",
   "description": "Zcash library for React Native",
   "homepage": "https://github.com/EdgeApp/react-native-zcash",
   "repository": {
