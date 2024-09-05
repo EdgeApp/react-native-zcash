@@ -131,7 +131,8 @@ export class Synchronizer {
     onBalanceChanged,
     onStatusChanged,
     onTransactionsChanged,
-    onUpdate
+    onUpdate,
+    onError
   }: SynchronizerCallbacks): void {
     this.setListener('BalanceEvent', event => {
       const {
@@ -156,6 +157,7 @@ export class Synchronizer {
     this.setListener('StatusEvent', onStatusChanged)
     this.setListener('TransactionEvent', onTransactionsChanged)
     this.setListener('UpdateEvent', onUpdate)
+    this.setListener('ErrorEvent', onError)
   }
 
   private setListener<T>(

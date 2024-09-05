@@ -441,21 +441,21 @@ class RNZcash: RCTEventEmitter {
 
   // Events
   public func sendToJs(name: String, data: Any) {
-    if (hasListeners) {
+    if hasListeners {
       self.sendEvent(withName: name, body: data)
     }
   }
 
-  override func startObserving() -> Void {
+  override func startObserving() {
     hasListeners = true
   }
 
-  override func stopObserving() -> Void {
+  override func stopObserving() {
     hasListeners = false
   }
 
   override func supportedEvents() -> [String] {
-    return ["BalanceEvent", "StatusEvent", "TransactionEvent", "UpdateEvent"]
+    return ["BalanceEvent", "ErrorEvent", "StatusEvent", "TransactionEvent", "UpdateEvent"]
   }
 }
 
@@ -527,6 +527,20 @@ class WalletSynchronizer: NSObject {
         status = "SYNCED"
 
         self.fullySynced = true
+      case .error(let error):
+        let zcashError = error.toZcashError()
+        switch zcashError.code {
+        case .compactBlockProcessorCritical:
+          let data: NSDictionary = [
+            "alias": self.alias, "level": "critical", "message": zcashError.message,
+          ]
+          emit("ErrorEvent", data)
+        default:
+          let data: NSDictionary = [
+            "alias": self.alias, "level": "error", "message": zcashError.message,
+          ]
+          emit("ErrorEvent", data)
+        }
       default:
         break
       }
