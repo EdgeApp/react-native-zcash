@@ -203,7 +203,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 }
                 map.putInt("minedHeight", tx.minedHeight?.value?.toInt() ?: 0)
                 map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds?.toInt() ?: 0)
-                map.putString("rawTransactionId", tx.rawId.byteArray.toHexReversed())
+                map.putString("rawTransactionId", tx.txIdString())
                 if (tx.raw != null) {
                     map.putString("raw", tx.raw!!.byteArray.toHex())
                 }
@@ -353,7 +353,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                     )
                 val tx = wallet.coroutineScope.async { wallet.transactions.first().first() }.await()
                 val map = Arguments.createMap()
-                map.putString("txId", tx.rawId.byteArray.toHexReversed())
+                map.putString("txId", tx.txIdString())
                 if (tx.raw != null) map.putString("raw", tx.raw?.byteArray?.toHex())
                 promise.resolve(map)
             } catch (t: Throwable) {
@@ -471,14 +471,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         reactApplicationContext
             .getJSModule(RCTDeviceEventEmitter::class.java)
             .emit(eventName, args)
-    }
-
-    private fun ByteArray.toHexReversed(): String {
-        val sb = StringBuilder(size * 2)
-        var i = size - 1
-        while (i >= 0)
-            sb.append(String.format("%02x", this[i--]))
-        return sb.toString()
     }
 
     data class Balances(
