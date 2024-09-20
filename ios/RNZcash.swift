@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import MnemonicSwift
+import SwiftProtobuf
 import os
 
 var SynchronizerMap = [String: WalletSynchronizer]()
@@ -230,7 +231,10 @@ class RNZcash: RCTEventEmitter {
             memo: sdkMemo
           )
 
+          let proposalBase64 = try proposal.inner.serializedData().base64EncodedString()
+
           let out: NSMutableDictionary = [
+            "proposalBase64": proposalBase64,
             "transactionCount": proposal.transactionCount(),
             "totalFee": String(proposal.totalFeeRequired().amount),
           ]
@@ -249,42 +253,47 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
-  @objc func sendToAddress(
-    _ alias: String, _ zatoshi: String, _ toAddress: String, _ memo: String, _ seed: String,
+  @objc func createTransfer(
+    _ alias: String, _ proposalBase64: String, _ seed: String,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
       if let wallet = SynchronizerMap[alias] {
-        let amount = Int64(zatoshi)
-        if amount == nil {
-          reject("SpendToAddressError", "Amount is invalid", genericError)
-          return
-        }
-
         do {
           let spendingKey = try deriveUnifiedSpendingKey(seed, wallet.synchronizer.network)
-          var sdkMemo: Memo? = nil
-          if memo != "" {
-            sdkMemo = try Memo(string: memo)
-          }
-          let broadcastTx = try await wallet.synchronizer.sendToAddress(
-            spendingKey: spendingKey,
-            zatoshi: Zatoshi(amount!),
-            toAddress: Recipient(toAddress, network: wallet.synchronizer.network.networkType),
-            memo: sdkMemo
+          let data = Data.init(base64Encoded: proposalBase64)!
+          let ffiProposal = try FfiProposal(serializedData: data)
+          let proposal = Proposal(inner: ffiProposal)
+
+          let transactions = try await wallet.synchronizer.createProposedTransactions(
+            proposal: proposal, spendingKey: spendingKey
           )
 
-          let tx: NSMutableDictionary = ["txId": broadcastTx.rawID.toHexStringTxId()]
-          if broadcastTx.raw != nil {
-            tx["raw"] = broadcastTx.raw?.hexEncodedString()
+          var lastTxid = ""  // The last transfer is the most relevant to the user
+          for try await tx in transactions {
+            switch tx {
+            case .grpcFailure(_, let error):
+              throw error
+            case .success(let txId):
+              lastTxid = txId.toHexStringTxId()
+              continue
+            case let .submitFailure(txId: _, code: code, description: description):
+              throw NSError(
+                domain:
+                  "transaction failed to submit with code: \(code) - description: \(description)",
+                code: 0)
+            case .notAttempted(_):
+              throw NSError(domain: "transaction not attempted", code: 0)
+            }
           }
-          resolve(tx)
+
+          resolve(lastTxid)
         } catch {
-          reject("SpendToAddressError", "Failed to spend", error)
+          reject("createTransfer", "Failed to spend", error)
         }
       } else {
-        reject("SpendToAddressError", "Wallet does not exist", genericError)
+        reject("createTransfer", "Wallet does not exist", genericError)
       }
     }
   }
