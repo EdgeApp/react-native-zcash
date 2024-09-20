@@ -25,14 +25,14 @@ function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/Electric-Coin-Company/zcash-swift-wallet-sdk.git',
-    // 2.1.5:
-    '31a584801302c04f8c644f652d44d25406007f5e'
+    // 2.2.3:
+    'af9383b419c2cafe37ac9edecf9d41cf37fbbf45'
   )
   getRepo(
     'zcash-light-client-ffi',
     'https://github.com/Electric-Coin-Company/zcash-light-client-ffi.git',
-    // 0.8.0:
-    '9314c83d7a09d88e1c0bd3ff3738a50833325059'
+    // 0.9.1:
+    '8ed5b08d59ff5e7e11240be29b084dedbdf2f268'
   )
 }
 
@@ -108,6 +108,10 @@ async function copySwift(): Promise<void> {
       // This block of code uses "Bundle.module" too,
       // but we can just delete it since phone builds don't need it:
       .replace(/static let macOS = BundleCheckpointURLProvider.*}\)/s, '')
+      .replace(
+        `public static func from(decimal: Decimal) -> Zatoshi`,
+        `public static func from(decimal: Foundation.Decimal) -> Zatoshi`
+      )
 
     await toDisklet.setText(file, fixed)
   }

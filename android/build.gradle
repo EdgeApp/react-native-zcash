@@ -1,7 +1,7 @@
 buildscript {
   def kotlinVersion = rootProject.ext.has('kotlinVersion')
     ? rootProject.ext.get('kotlinVersion')
-    : '1.8.22'
+    : '1.9.23'
 
   repositories {
     mavenCentral()
@@ -49,8 +49,8 @@ dependencies {
 
   implementation 'androidx.appcompat:appcompat:1.6.1'
   implementation 'androidx.paging:paging-runtime-ktx:2.1.2'
-  implementation 'cash.z.ecc.android:zcash-android-sdk:2.1.0'
-  implementation 'cash.z.ecc.android:zcash-android-sdk-incubator:2.1.0'
+  implementation 'cash.z.ecc.android:zcash-android-sdk:2.2.4'
+  implementation 'cash.z.ecc.android:zcash-android-sdk-incubator:2.2.4'
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
 }

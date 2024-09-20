@@ -102,6 +102,7 @@ class RNZcash: RCTEventEmitter {
         fsBlockDbRoot: try! fsBlockDbRootURLHelper(alias, network),
         generalStorageURL: try! generalStorageURLHelper(alias, network),
         dataDbURL: try! dataDbURLHelper(alias, network),
+        torDirURL: try! torDirURLHelper(alias, network),
         endpoint: endpoint,
         network: network,
         spendParamsURL: try! spendParamsURLHelper(alias),
@@ -432,6 +433,7 @@ class RNZcash: RCTEventEmitter {
     if derivationTool.isValidUnifiedAddress(address)
       || derivationTool.isValidSaplingAddress(address)
       || derivationTool.isValidTransparentAddress(address)
+      || derivationTool.isValidTexAddress(address)
     {
       resolve(true)
     } else {
@@ -695,6 +697,14 @@ func dataDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
     .appendingPathComponent(
       network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultDataDbName,
       isDirectory: false
+    )
+}
+
+func torDirURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
+  try documentsDirectoryHelper()
+    .appendingPathComponent(
+      network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultTorDirName,
+      isDirectory: true
     )
 }
 
