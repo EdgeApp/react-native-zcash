@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Base64
 
 class RNZcashModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -203,7 +204,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 }
                 map.putInt("minedHeight", tx.minedHeight?.value?.toInt() ?: 0)
                 map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds?.toInt() ?: 0)
-                map.putString("rawTransactionId", tx.rawId.byteArray.toHexReversed())
+                map.putString("rawTransactionId", tx.txIdString())
                 if (tx.raw != null) {
                     map.putString("raw", tx.raw!!.byteArray.toHex())
                 }
@@ -323,6 +324,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 val map = Arguments.createMap()
                 map.putInt("transactionCount", proposal.transactionCount())
                 map.putString("totalFee", proposal.totalFeeRequired().value.toString())
+                map.putString("proposalBase64", Base64.getEncoder().encodeToString(proposal.toByteArray()))
                 promise.resolve(map)
             } catch (t: Throwable) {
                 promise.reject("Err", t)
@@ -330,12 +332,11 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @kotlin.ExperimentalStdlibApi
     @ReactMethod
-    fun sendToAddress(
+    fun createTransfer(
         alias: String,
-        zatoshi: String,
-        toAddress: String,
-        memo: String = "",
+        proposalBase64: String,
         seed: String,
         promise: Promise,
     ) {
@@ -344,18 +345,15 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             try {
                 val seedPhrase = SeedPhrase.new(seed)
                 val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
-                val internalId =
-                    wallet.sendToAddress(
-                        usk,
-                        Zatoshi(zatoshi.toLong()),
-                        toAddress,
-                        memo,
-                    )
-                val tx = wallet.coroutineScope.async { wallet.transactions.first().first() }.await()
-                val map = Arguments.createMap()
-                map.putString("txId", tx.rawId.byteArray.toHexReversed())
-                if (tx.raw != null) map.putString("raw", tx.raw?.byteArray?.toHex())
-                promise.resolve(map)
+                val proposalByteArray = Base64.getDecoder().decode(proposalBase64)
+                val proposal = Proposal.fromByteArray(proposalByteArray)
+
+                val txs =
+                    wallet.coroutineScope.async {
+                        wallet.createProposedTransactions(proposal, usk).take(proposal.transactionCount()).toList()
+                    }.await()
+                val txid = txs[txs.lastIndex].txIdString() // The last transfer is the most relevant to the user
+                promise.resolve(txid)
             } catch (t: Throwable) {
                 promise.reject("Err", t)
             }
@@ -471,14 +469,6 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         reactApplicationContext
             .getJSModule(RCTDeviceEventEmitter::class.java)
             .emit(eventName, args)
-    }
-
-    private fun ByteArray.toHexReversed(): String {
-        val sb = StringBuilder(size * 2)
-        var i = size - 1
-        while (i >= 0)
-            sb.append(String.format("%02x", this[i--]))
-        return sb.toString()
     }
 
     data class Balances(

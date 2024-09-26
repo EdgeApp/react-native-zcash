@@ -44,11 +44,9 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
-RCT_EXTERN_METHOD(sendToAddress:(NSString *)alias
-:(NSString *)zatoshi
-:(NSString *)toAddress
-:(NSString *)memo
-:(NSString *)spendingKey
+RCT_EXTERN_METHOD(createTransfer:(NSString *)alias
+:(NSString *)proposalBase64
+:(NSString *)seed
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )

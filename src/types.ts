@@ -10,13 +10,15 @@ export interface InitializerConfig {
   newWallet: boolean
 }
 
-export interface TransferSpendInfo {
+export interface ProposeTransferOpts {
   zatoshi: string
   toAddress: string
   memo?: string
 }
-export interface SpendInfo extends TransferSpendInfo {
+
+export interface CreateTransferOpts {
   mnemonicSeed: string
+  proposalBase64: string
 }
 
 export interface ShieldFundsInfo {
@@ -26,6 +28,7 @@ export interface ShieldFundsInfo {
 }
 
 export interface ProposalSuccess {
+  proposalBase64: string
   transactionCount: number
   totalFee: string
 }

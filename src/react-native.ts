@@ -7,16 +7,15 @@ import {
 
 import {
   Addresses,
+  CreateTransferOpts,
   InitializerConfig,
   Network,
   ProposalSuccess,
+  ProposeTransferOpts,
   ShieldFundsInfo,
   SpendFailure,
-  SpendInfo,
-  SpendSuccess,
   SynchronizerCallbacks,
-  Transaction,
-  TransferSpendInfo
+  Transaction
 } from './types'
 export * from './types'
 
@@ -90,27 +89,23 @@ export class Synchronizer {
     await RNZcash.rescan(this.alias)
   }
 
-  async proposeTransfer(
-    spendInfo: TransferSpendInfo
-  ): Promise<ProposalSuccess> {
+  async proposeTransfer(opts: ProposeTransferOpts): Promise<ProposalSuccess> {
     const result = await RNZcash.proposeTransfer(
       this.alias,
-      spendInfo.zatoshi,
-      spendInfo.toAddress,
-      spendInfo.memo
+      opts.zatoshi,
+      opts.toAddress,
+      opts.memo
     )
     return result
   }
 
-  async sendToAddress(
-    spendInfo: SpendInfo
-  ): Promise<SpendSuccess | SpendFailure> {
-    const result = await RNZcash.sendToAddress(
+  async createTransfer(
+    opts: CreateTransferOpts
+  ): Promise<string | SpendFailure> {
+    const result = await RNZcash.createTransfer(
       this.alias,
-      spendInfo.zatoshi,
-      spendInfo.toAddress,
-      spendInfo.memo,
-      spendInfo.mnemonicSeed
+      opts.proposalBase64,
+      opts.mnemonicSeed
     )
     return result
   }
