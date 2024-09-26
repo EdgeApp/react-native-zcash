@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+## 0.9.0 (2024-09-25)
+
 - added: Support sending to ZIP-320 TEX addresses
 - changed: Replace `sendToAddress` with `createTransfer`
+- changed: Updated checkpoints
 
 ## 0.8.1 (2024-09-16)
 
