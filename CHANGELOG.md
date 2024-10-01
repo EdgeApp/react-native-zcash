@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.1 (2024-10-01)
+
+- changed: Updated checkpoints
+
 ## 0.9.0 (2024-09-25)
 
 - added: Support sending to ZIP-320 TEX addresses
