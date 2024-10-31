@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.2 (2024-10-31)
+
+- changed: Updated checkpoints
+
 ## 0.9.1 (2024-10-01)
 
 - changed: Updated checkpoints
