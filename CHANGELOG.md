@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.9.3 (2024-11-20)
+
+- changed: (Android) Upgrade zcash-android-sdk to v2.2.5
+- changed: (iOS) Upgrade zcash-swift-wallet-sdk to v2.2.6
+- changed: Updated checkpoints
+
 ## 0.9.2 (2024-10-31)
 
 - changed: Updated checkpoints
