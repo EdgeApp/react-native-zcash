@@ -60,7 +60,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                         alias,
                         endpoint,
                         seedPhrase.toByteArray(),
-                        BlockHeight.new(network, birthdayHeight.toLong()),
+                        BlockHeight.new(birthdayHeight.toLong()),
                         initMode,
                     ) as SdkSynchronizer
             }
@@ -71,7 +71,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             }.collectWith(scope) { map ->
                 val progress = map["progress"] as PercentDecimal
                 var networkBlockHeight = map["networkHeight"] as BlockHeight?
-                if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(wallet.network, birthdayHeight.toLong())
+                if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(birthdayHeight.toLong())
 
                 sendEvent("UpdateEvent") { args ->
                     args.putString("alias", alias)

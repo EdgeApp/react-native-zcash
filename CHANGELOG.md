@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fixed: Fix argument passed to BlockHeight constructor
+
 ## 0.9.3 (2024-11-20)
 
 - changed: (Android) Upgrade zcash-android-sdk to v2.2.5
