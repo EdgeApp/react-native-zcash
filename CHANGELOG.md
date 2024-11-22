@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.4 (2024-11-21)
+
 - fixed: Fix argument passed to BlockHeight constructor
 
 ## 0.9.3 (2024-11-20)
