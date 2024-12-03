@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.9.5 (2024-12-02)
+
+- changed: Updated checkpoints
+- changed: Upgrade biggystring to v4.2.3
+
 ## 0.9.4 (2024-11-21)
 
 - fixed: Fix argument passed to BlockHeight constructor
