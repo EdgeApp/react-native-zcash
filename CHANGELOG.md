@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-## 0.9.7 (2025-04-30)\
+## 0.9.8 (2025-07-22)
+
+- changed: Updated checkpoints to block 3000000
+
+## 0.9.7 (2025-04-30)
 
 - changed: Updated checkpoints
 
