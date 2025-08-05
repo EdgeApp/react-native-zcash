@@ -1,6 +1,8 @@
 # React Native Zcash
 
-## Unreleased
+## 0.9.9 (2025-08-04)
+
+- changed: Updated checkpoints to block 3010000
 
 ## 0.9.8 (2025-07-22)
 
