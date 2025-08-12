@@ -22,8 +22,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Base64
 
-class RNZcashModule(private val reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+class RNZcashModule(
+    private val reactContext: ReactApplicationContext,
+) : ReactContextBaseJavaModule(reactContext) {
     /**
      * Scope for anything that out-lives the synchronizer, meaning anything that can be used before
      * the synchronizer starts or after it stops. Everything else falls within the scope of the
@@ -91,12 +92,14 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
             wallet.transactions.collectWith(scope) { txList ->
                 scope.launch {
                     val nativeArray = Arguments.createArray()
-                    txList.filter { tx -> tx.transactionState != TransactionState.Expired }.map { tx ->
-                        launch {
-                            val parsedTx = parseTx(wallet, tx)
-                            nativeArray.pushMap(parsedTx)
-                        }
-                    }.forEach { it.join() }
+                    txList
+                        .filter { tx -> tx.transactionState != TransactionState.Expired }
+                        .map { tx ->
+                            launch {
+                                val parsedTx = parseTx(wallet, tx)
+                                nativeArray.pushMap(parsedTx)
+                            }
+                        }.forEach { it.join() }
 
                     sendEvent("TransactionEvent") { args ->
                         args.putString("alias", alias)
@@ -349,9 +352,10 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 val proposal = Proposal.fromByteArray(proposalByteArray)
 
                 val txs =
-                    wallet.coroutineScope.async {
-                        wallet.createProposedTransactions(proposal, usk).take(proposal.transactionCount()).toList()
-                    }.await()
+                    wallet.coroutineScope
+                        .async {
+                            wallet.createProposedTransactions(proposal, usk).take(proposal.transactionCount()).toList()
+                        }.await()
                 val txid = txs[txs.lastIndex].txIdString() // The last transfer is the most relevant to the user
                 promise.resolve(txid)
             } catch (t: Throwable) {
@@ -445,9 +449,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     /**
      * Retrieve wallet object from synchronizer map
      */
-    private fun getWallet(alias: String): SdkSynchronizer {
-        return synchronizerMap[alias] ?: throw Exception("Wallet not found")
-    }
+    private fun getWallet(alias: String): SdkSynchronizer = synchronizerMap[alias] ?: throw Exception("Wallet not found")
 
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
