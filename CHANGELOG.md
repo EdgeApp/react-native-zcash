@@ -1,5 +1,9 @@
 # React Native Zcash
 
+## Unreleased
+
+- fixed: Make the `initialize` return type compatible with RN79.
+
 ## 0.9.9 (2025-08-04)
 
 - changed: Updated checkpoints to block 3010000
