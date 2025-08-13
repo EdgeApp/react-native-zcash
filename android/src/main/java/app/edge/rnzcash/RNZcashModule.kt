@@ -22,8 +22,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Base64
 
-class RNZcashModule(private val reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+class RNZcashModule(
+    private val reactContext: ReactApplicationContext,
+) : ReactContextBaseJavaModule(reactContext) {
     /**
      * Scope for anything that out-lives the synchronizer, meaning anything that can be used before
      * the synchronizer starts or after it stops. Everything else falls within the scope of the
@@ -46,135 +47,139 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
         defaultPort: Int = 9067,
         newWallet: Boolean,
         promise: Promise,
-    ) = moduleScope.launch {
-        promise.wrap {
-            val network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
-            val endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
-            val seedPhrase = SeedPhrase.new(seed)
-            val initMode = if (newWallet) WalletInitMode.NewWallet else WalletInitMode.ExistingWallet
-            if (!synchronizerMap.containsKey(alias)) {
-                synchronizerMap[alias] =
-                    Synchronizer.new(
-                        reactApplicationContext,
-                        network,
-                        alias,
-                        endpoint,
-                        seedPhrase.toByteArray(),
-                        BlockHeight.new(birthdayHeight.toLong()),
-                        initMode,
-                    ) as SdkSynchronizer
-            }
-            val wallet = getWallet(alias)
-            val scope = wallet.coroutineScope
-            combine(wallet.progress, wallet.networkHeight) { progress, networkHeight ->
-                return@combine mapOf("progress" to progress, "networkHeight" to networkHeight)
-            }.collectWith(scope) { map ->
-                val progress = map["progress"] as PercentDecimal
-                var networkBlockHeight = map["networkHeight"] as BlockHeight?
-                if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(birthdayHeight.toLong())
-
-                sendEvent("UpdateEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putInt(
-                        "scanProgress",
-                        progress.toPercentage(),
-                    )
-                    args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
+    ) {
+        moduleScope.launch {
+            promise.wrap {
+                val network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
+                val endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
+                val seedPhrase = SeedPhrase.new(seed)
+                val initMode = if (newWallet) WalletInitMode.NewWallet else WalletInitMode.ExistingWallet
+                if (!synchronizerMap.containsKey(alias)) {
+                    synchronizerMap[alias] =
+                        Synchronizer.new(
+                            reactApplicationContext,
+                            network,
+                            alias,
+                            endpoint,
+                            seedPhrase.toByteArray(),
+                            BlockHeight.new(birthdayHeight.toLong()),
+                            initMode,
+                        ) as SdkSynchronizer
                 }
-            }
-            wallet.status.collectWith(scope) { status ->
-                sendEvent("StatusEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putString("name", status.toString())
-                }
-            }
-            wallet.transactions.collectWith(scope) { txList ->
-                scope.launch {
-                    val nativeArray = Arguments.createArray()
-                    txList.filter { tx -> tx.transactionState != TransactionState.Expired }.map { tx ->
-                        launch {
-                            val parsedTx = parseTx(wallet, tx)
-                            nativeArray.pushMap(parsedTx)
-                        }
-                    }.forEach { it.join() }
+                val wallet = getWallet(alias)
+                val scope = wallet.coroutineScope
+                combine(wallet.progress, wallet.networkHeight) { progress, networkHeight ->
+                    return@combine mapOf("progress" to progress, "networkHeight" to networkHeight)
+                }.collectWith(scope) { map ->
+                    val progress = map["progress"] as PercentDecimal
+                    var networkBlockHeight = map["networkHeight"] as BlockHeight?
+                    if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(birthdayHeight.toLong())
 
-                    sendEvent("TransactionEvent") { args ->
+                    sendEvent("UpdateEvent") { args ->
                         args.putString("alias", alias)
-                        args.putArray(
-                            "transactions",
-                            nativeArray,
+                        args.putInt(
+                            "scanProgress",
+                            progress.toPercentage(),
                         )
+                        args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
                     }
                 }
-            }
-            combine(
-                wallet.transparentBalance,
-                wallet.saplingBalances,
-                wallet.orchardBalances,
-            ) { transparentBalance: Zatoshi?, saplingBalances: WalletBalance?, orchardBalances: WalletBalance? ->
-                return@combine Balances(
-                    transparentBalance = transparentBalance,
-                    saplingBalances = saplingBalances,
-                    orchardBalances = orchardBalances,
-                )
-            }.collectWith(scope) { map ->
-                val transparentBalance = map.transparentBalance
-                val saplingBalances = map.saplingBalances
-                val orchardBalances = map.orchardBalances
-
-                val transparentAvailableZatoshi = transparentBalance ?: Zatoshi(0L)
-                val transparentTotalZatoshi = transparentBalance ?: Zatoshi(0L)
-
-                val saplingAvailableZatoshi = saplingBalances?.available ?: Zatoshi(0L)
-                val saplingTotalZatoshi = saplingBalances?.total ?: Zatoshi(0L)
-
-                val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
-                val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
-
-                sendEvent("BalanceEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putString("transparentAvailableZatoshi", transparentAvailableZatoshi.value.toString())
-                    args.putString("transparentTotalZatoshi", transparentTotalZatoshi.value.toString())
-                    args.putString("saplingAvailableZatoshi", saplingAvailableZatoshi.value.toString())
-                    args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
-                    args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
-                    args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
+                wallet.status.collectWith(scope) { status ->
+                    sendEvent("StatusEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putString("name", status.toString())
+                    }
                 }
-            }
+                wallet.transactions.collectWith(scope) { txList ->
+                    scope.launch {
+                        val nativeArray = Arguments.createArray()
+                        txList
+                            .filter { tx -> tx.transactionState != TransactionState.Expired }
+                            .map { tx ->
+                                launch {
+                                    val parsedTx = parseTx(wallet, tx)
+                                    nativeArray.pushMap(parsedTx)
+                                }
+                            }.forEach { it.join() }
 
-            fun handleError(
-                level: String,
-                error: Throwable?,
-            ) {
-                sendEvent("ErrorEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putString("level", level)
-                    args.putString("message", error?.message ?: "Unknown error")
+                        sendEvent("TransactionEvent") { args ->
+                            args.putString("alias", alias)
+                            args.putArray(
+                                "transactions",
+                                nativeArray,
+                            )
+                        }
+                    }
                 }
-            }
+                combine(
+                    wallet.transparentBalance,
+                    wallet.saplingBalances,
+                    wallet.orchardBalances,
+                ) { transparentBalance: Zatoshi?, saplingBalances: WalletBalance?, orchardBalances: WalletBalance? ->
+                    return@combine Balances(
+                        transparentBalance = transparentBalance,
+                        saplingBalances = saplingBalances,
+                        orchardBalances = orchardBalances,
+                    )
+                }.collectWith(scope) { map ->
+                    val transparentBalance = map.transparentBalance
+                    val saplingBalances = map.saplingBalances
+                    val orchardBalances = map.orchardBalances
 
-            // Error listeners
-            wallet.onCriticalErrorHandler = { error ->
-                handleError("critical", error)
-                false
+                    val transparentAvailableZatoshi = transparentBalance ?: Zatoshi(0L)
+                    val transparentTotalZatoshi = transparentBalance ?: Zatoshi(0L)
+
+                    val saplingAvailableZatoshi = saplingBalances?.available ?: Zatoshi(0L)
+                    val saplingTotalZatoshi = saplingBalances?.total ?: Zatoshi(0L)
+
+                    val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
+                    val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
+
+                    sendEvent("BalanceEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putString("transparentAvailableZatoshi", transparentAvailableZatoshi.value.toString())
+                        args.putString("transparentTotalZatoshi", transparentTotalZatoshi.value.toString())
+                        args.putString("saplingAvailableZatoshi", saplingAvailableZatoshi.value.toString())
+                        args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
+                        args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
+                        args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
+                    }
+                }
+
+                fun handleError(
+                    level: String,
+                    error: Throwable?,
+                ) {
+                    sendEvent("ErrorEvent") { args ->
+                        args.putString("alias", alias)
+                        args.putString("level", level)
+                        args.putString("message", error?.message ?: "Unknown error")
+                    }
+                }
+
+                // Error listeners
+                wallet.onCriticalErrorHandler = { error ->
+                    handleError("critical", error)
+                    false
+                }
+                wallet.onProcessorErrorHandler = { error ->
+                    handleError("error", error)
+                    true
+                }
+                wallet.onSetupErrorHandler = { error ->
+                    handleError("error", error)
+                    false
+                }
+                wallet.onSubmissionErrorHandler = { error ->
+                    handleError("error", error)
+                    false
+                }
+                wallet.onChainErrorHandler = { errorHeight, rewindHeight ->
+                    val message = "Chain error detected at height: $errorHeight. Rewinding to: $rewindHeight"
+                    handleError("error", Throwable(message))
+                }
+                return@wrap null
             }
-            wallet.onProcessorErrorHandler = { error ->
-                handleError("error", error)
-                true
-            }
-            wallet.onSetupErrorHandler = { error ->
-                handleError("error", error)
-                false
-            }
-            wallet.onSubmissionErrorHandler = { error ->
-                handleError("error", error)
-                false
-            }
-            wallet.onChainErrorHandler = { errorHeight, rewindHeight ->
-                val message = "Chain error detected at height: $errorHeight. Rewinding to: $rewindHeight"
-                handleError("error", Throwable(message))
-            }
-            return@wrap null
         }
     }
 
@@ -349,9 +354,10 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
                 val proposal = Proposal.fromByteArray(proposalByteArray)
 
                 val txs =
-                    wallet.coroutineScope.async {
-                        wallet.createProposedTransactions(proposal, usk).take(proposal.transactionCount()).toList()
-                    }.await()
+                    wallet.coroutineScope
+                        .async {
+                            wallet.createProposedTransactions(proposal, usk).take(proposal.transactionCount()).toList()
+                        }.await()
                 val txid = txs[txs.lastIndex].txIdString() // The last transfer is the most relevant to the user
                 promise.resolve(txid)
             } catch (t: Throwable) {
@@ -445,9 +451,7 @@ class RNZcashModule(private val reactContext: ReactApplicationContext) :
     /**
      * Retrieve wallet object from synchronizer map
      */
-    private fun getWallet(alias: String): SdkSynchronizer {
-        return synchronizerMap[alias] ?: throw Exception("Wallet not found")
-    }
+    private fun getWallet(alias: String): SdkSynchronizer = synchronizerMap[alias] ?: throw Exception("Wallet not found")
 
     /**
      * Wrap the given block of logic in a promise, rejecting for any error.
