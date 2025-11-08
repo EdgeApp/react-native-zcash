@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- added: Expose `proposeFulfillingPaymentURI` method
+
 ## 0.10.0 (2025-11-18)
 
 - changed: Upgrade iOS and Android sdks to v2.4.0

@@ -98,6 +98,16 @@ export class Synchronizer {
     return result
   }
 
+  async proposeFulfillingPaymentURI(
+    paymentUri: string
+  ): Promise<ProposalSuccess> {
+    const result = await RNZcash.proposeFulfillingPaymentURI(
+      this.alias,
+      paymentUri
+    )
+    return result
+  }
+
   async createTransfer(
     opts: CreateTransferOpts
   ): Promise<string | SpendFailure> {
