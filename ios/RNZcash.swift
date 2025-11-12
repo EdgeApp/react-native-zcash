@@ -703,6 +703,33 @@ class WalletSynchronizer: NSObject {
       }
       confTx.memos = textMemos
     }
+    // Debug: emit transaction outputs so JS can verify recipients and memo presence
+    let outputs = await self.synchronizer.getTransactionOutputs(for: tx)
+    let outSummary: [[String: Any]] = outputs.map { out in
+      var recipientStr = ""
+      switch out.recipient {
+      case let .address(addr):
+        recipientStr = addr.stringEncoded
+      case let .internalAccount(acct):
+        recipientStr = "internal:\(acct)"
+      @unknown default:
+        recipientStr = "unknown"
+      }
+      return [
+        "pool": "\(out.pool)",
+        "index": out.index,
+        "value": String(describing: out.value.amount),
+        "isChange": out.isChange,
+        "recipient": recipientStr,
+        "hasMemo": out.memo != nil
+      ]
+    }
+    let debugData: NSDictionary = [
+      "alias": self.alias,
+      "level": "error",
+      "message": "txOutputs tx=\(confTx.rawTransactionId) outs=\(outSummary)"
+    ]
+    emit("ErrorEvent", debugData)
     return confTx
   }
 

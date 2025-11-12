@@ -362,6 +362,15 @@ class RNZcashModule(
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
             try {
+                // Emit debug info so JS layer (accountbased) can surface this via warn logs
+                sendEvent("ErrorEvent") { args ->
+                    args.putString("alias", alias)
+                    args.putString("level", "error")
+                    args.putString(
+                        "message",
+                        "proposeTransfer to=$toAddress zatoshi=$zatoshi memoLen=${memo.length}",
+                    )
+                }
                 val account = wallet.getAccounts().first()
                 val proposal =
                     wallet.proposeTransfer(
@@ -374,6 +383,15 @@ class RNZcashModule(
                 map.putInt("transactionCount", proposal.transactionCount())
                 map.putString("totalFee", proposal.totalFeeRequired().value.toString())
                 map.putString("proposalBase64", Base64.getEncoder().encodeToString(proposal.toByteArray()))
+                // Emit result summary for additional visibility in JS logs
+                sendEvent("ErrorEvent") { args ->
+                    args.putString("alias", alias)
+                    args.putString("level", "error")
+                    args.putString(
+                        "message",
+                        "proposeTransfer result txCount=${proposal.transactionCount()} totalFee=${proposal.totalFeeRequired().value}",
+                    )
+                }
                 promise.resolve(map)
             } catch (t: Throwable) {
                 promise.reject("Err", t)
