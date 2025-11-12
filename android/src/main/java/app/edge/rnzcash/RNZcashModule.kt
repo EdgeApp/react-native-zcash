@@ -184,11 +184,15 @@ class RNZcashModule(
         alias: String,
         promise: Promise,
     ) {
-        promise.wrap {
-            val wallet = getWallet(alias)
-            wallet.close()
-            synchronizerMap.remove(alias)
-            return@wrap null
+        val wallet = getWallet(alias)
+        moduleScope.launch {
+            try {
+                wallet.closeFlow().first()
+                synchronizerMap.remove(alias)
+                promise.resolve(null)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
         }
     }
 
