@@ -15,11 +15,6 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
-RCT_EXTERN_METHOD(start:(NSString *)alias
-resolver:(RCTPromiseResolveBlock)resolve
-rejecter:(RCTPromiseRejectBlock)reject
-)
-
 RCT_EXTERN_METHOD(stop:(NSString *)alias
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject

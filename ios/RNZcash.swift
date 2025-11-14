@@ -137,25 +137,6 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
-  @objc func start(
-    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
-    Task {
-      if let wallet = SynchronizerMap[alias] {
-        do {
-          try await wallet.synchronizer.start()
-          wallet.subscribe()
-        } catch {
-          reject("StartError", "Synchronizer failed to start", error)
-        }
-        resolve(nil)
-      } else {
-        reject("StartError", "Wallet does not exist", genericError)
-      }
-    }
-  }
-
   @objc func stop(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
