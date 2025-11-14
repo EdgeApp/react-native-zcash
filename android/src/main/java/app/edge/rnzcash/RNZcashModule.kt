@@ -399,6 +399,16 @@ class RNZcashModule(
         }
     }
 
+    @ReactMethod
+    fun proposeFulfillingPaymentURI(
+        alias: String,
+        paymentUri: String,
+        promise: Promise,
+    ) {
+        // TODO: Wire to Android SDK equivalent when available
+        promise.reject("Err", Throwable("proposeFulfillingPaymentURI not implemented on Android"))
+    }
+
     @kotlin.ExperimentalStdlibApi
     @ReactMethod
     fun createTransfer(

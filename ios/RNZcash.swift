@@ -246,6 +246,55 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
+  @objc func proposeFulfillingPaymentURI(
+    _ alias: String, _ paymentUri: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = SynchronizerMap[alias] {
+        do {
+          // Emit debug info to help verify the URI used by JS
+          let debugStart: NSDictionary = [
+            "alias": alias,
+            "level": "error",
+            "message": "proposeFulfillingPaymentURI uriLen=\(paymentUri.count)"
+          ]
+          wallet.emit("ErrorEvent", debugStart)
+
+          let proposal = try await wallet.synchronizer.proposefulfillingPaymentURI(
+            paymentUri,
+            accountIndex: 0
+          )
+          let proposalBase64 = try proposal.inner.serializedData().base64EncodedString()
+
+          let out: NSMutableDictionary = [
+            "proposalBase64": proposalBase64,
+            "transactionCount": proposal.transactionCount(),
+            "totalFee": String(proposal.totalFeeRequired().amount),
+          ]
+
+          // Emit result summary for additional visibility
+          let debugEnd: NSDictionary = [
+            "alias": alias,
+            "level": "error",
+            "message":
+              "proposeFulfillingPaymentURI result txCount=\(proposal.transactionCount()) totalFee=\(proposal.totalFeeRequired().amount)"
+          ]
+          wallet.emit("ErrorEvent", debugEnd)
+
+          resolve(out)
+        } catch let error as ZcashError {
+          reject("proposeFulfillingPaymentURI", "Failed to propose from payment URI", error)
+        } catch {
+          reject("proposeFulfillingPaymentURI", "Unknown error", error)
+        }
+      } else {
+        reject("proposeFulfillingPaymentURI", "Wallet does not exist", genericError)
+      }
+    }
+  }
+
   @objc func createTransfer(
     _ alias: String, _ proposalBase64: String, _ seed: String,
     resolver resolve: @escaping RCTPromiseResolveBlock,
