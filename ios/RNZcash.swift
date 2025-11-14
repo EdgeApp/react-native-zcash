@@ -4,7 +4,24 @@ import MnemonicSwift
 import SwiftProtobuf
 import os
 
-var SynchronizerMap = [String: WalletSynchronizer]()
+actor SynchronizerStore {
+  private var map: [String: WalletSynchronizer] = [:]
+
+  func get(_ alias: String) -> WalletSynchronizer? {
+    map[alias]
+  }
+
+  func set(_ wallet: WalletSynchronizer, for alias: String) {
+    map[alias] = wallet
+  }
+
+  func remove(_ alias: String) {
+    map.removeValue(forKey: alias)
+  }
+
+}
+
+let synchronizerStore = SynchronizerStore()
 
 struct ConfirmedTx {
   var minedHeight: Int
@@ -111,7 +128,7 @@ class RNZcash: RCTEventEmitter {
         saplingParamsSourceURL: SaplingParamsSourceURL.default,
         alias: ZcashSynchronizerAlias.custom(alias)
       )
-      if SynchronizerMap[alias] == nil {
+      if await synchronizerStore.get(alias) == nil {
         do {
           let wallet = try WalletSynchronizer(
             alias: alias, initializer: initializer, emitter: sendToJs)
@@ -125,7 +142,7 @@ class RNZcash: RCTEventEmitter {
           )
           try await wallet.synchronizer.start()
           wallet.subscribe()
-          SynchronizerMap[alias] = wallet
+          await synchronizerStore.set(wallet, for: alias)
           resolve(nil)
         } catch {
           reject("InitializeError", "Synchronizer failed to initialize", error)
@@ -140,11 +157,11 @@ class RNZcash: RCTEventEmitter {
   @objc func stop(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
-    if let wallet = SynchronizerMap[alias] {
+  ) async {
+    if let wallet = await synchronizerStore.get(alias) {
       wallet.synchronizer.stop()
       wallet.cancellables.forEach { $0.cancel() }
-      SynchronizerMap[alias] = nil
+      await synchronizerStore.remove(alias)
       resolve(nil)
     } else {
       reject("StopError", "Wallet does not exist", genericError)
@@ -156,7 +173,7 @@ class RNZcash: RCTEventEmitter {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
-      if let wallet = SynchronizerMap[alias] {
+      if let wallet = await synchronizerStore.get(alias) {
         do {
           let height = try await wallet.synchronizer.latestHeight()
           resolve(height)
@@ -193,7 +210,7 @@ class RNZcash: RCTEventEmitter {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
-      if let wallet = SynchronizerMap[alias] {
+      if let wallet = await synchronizerStore.get(alias) {
         let amount = Int64(zatoshi)
         if amount == nil {
           reject("ProposeTransferError", "Amount is invalid", genericError)
@@ -240,7 +257,7 @@ class RNZcash: RCTEventEmitter {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
-      if let wallet = SynchronizerMap[alias] {
+      if let wallet = await synchronizerStore.get(alias) {
         do {
           let spendingKey = try deriveUnifiedSpendingKey(seed, wallet.synchronizer.network)
           let data = Data.init(base64Encoded: proposalBase64)!
@@ -285,7 +302,7 @@ class RNZcash: RCTEventEmitter {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
-      if let wallet = SynchronizerMap[alias] {
+      if let wallet = await synchronizerStore.get(alias) {
         if !wallet.fullySynced {
           reject("shieldFunds", "Wallet is not synced", genericError)
           return
@@ -321,7 +338,7 @@ class RNZcash: RCTEventEmitter {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
-      if let wallet = SynchronizerMap[alias] {
+      if let wallet = await synchronizerStore.get(alias) {
         wallet.synchronizer.rewind(.birthday).sink(
           receiveCompletion: { completion in
             Task {
@@ -393,7 +410,7 @@ class RNZcash: RCTEventEmitter {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     Task {
-      if let wallet = SynchronizerMap[alias] {
+      if let wallet = await synchronizerStore.get(alias) {
         do {
           let unifiedAddress = try await wallet.synchronizer.getUnifiedAddress(accountIndex: 0)
           let saplingAddress = try await wallet.synchronizer.getSaplingAddress(accountIndex: 0)
