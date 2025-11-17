@@ -32,6 +32,7 @@ struct ConfirmedTx {
   var value: String
   var fee: String?
   var isShielding: Bool
+  var isExpired: Bool
   var memos: [String]?
   var dictionary: [String: Any?] {
     return [
@@ -44,6 +45,7 @@ struct ConfirmedTx {
       "fee": fee,
       "memos": memos ?? [],
       "isShielding": isShielding,
+      "isExpired": isExpired,
     ]
   }
   var nsDictionary: NSDictionary {
@@ -669,6 +671,7 @@ class WalletSynchronizer: NSObject {
       blockTimeInSeconds: Int(tx.blockTime ?? 0),
       value: String(describing: abs(tx.value.amount)),
       isShielding: tx.isShielding,
+      isExpired: tx.isExpiredUmined ?? false
     )
     if tx.raw != nil {
       confTx.raw = tx.raw!.hexEncodedString()
@@ -705,7 +708,6 @@ class WalletSynchronizer: NSObject {
     Task {
       var out: [NSDictionary] = []
       for tx in transactions {
-        if tx.isExpiredUmined ?? false { continue }
         let confTx = await parseTx(tx: tx)
         out.append(confTx.nsDictionary)
       }

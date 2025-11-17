@@ -243,6 +243,7 @@ class RNZcashModule(
                 map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds?.toInt() ?: 0)
                 map.putString("rawTransactionId", tx.txId.txIdString())
                 map.putBoolean("isShielding", tx.isShielding)
+                map.putBoolean("isExpired", tx.transactionState == TransactionState.Expired)
                 tx.raw
                     ?.byteArray
                     ?.toHex()
