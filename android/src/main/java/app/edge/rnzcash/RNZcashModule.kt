@@ -32,6 +32,15 @@ class RNZcashModule(
     private var moduleScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
     private var synchronizerMap = mutableMapOf<String, SdkSynchronizer>()
 
+    // Track emitted transactions per alias to only emit new or updated transactions
+    private val emittedTransactions = mutableMapOf<String, MutableMap<String, EmittedTxState>>()
+
+    // Data class to track what we've emitted for each transaction
+    private data class EmittedTxState(
+        val minedHeight: BlockHeight?,
+        val transactionState: TransactionState,
+    )
+
     private val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
 
     override fun getName() = "RNZcash"
@@ -97,9 +106,37 @@ class RNZcashModule(
                 }
                 wallet.allTransactions.collectWith(scope) { txList ->
                     scope.launch {
+                        // Get or create the tracking map for this alias
+                        val emittedForAlias = emittedTransactions.getOrPut(alias) { mutableMapOf() }
+
+                        val transactionsToEmit = mutableListOf<TransactionOverview>()
+
+                        txList.forEach { tx ->
+                            val txId = tx.txId.txIdString()
+                            val previousState = emittedForAlias[txId]
+
+                            // Check if this is a new transaction or if minedHeight/transactionState changed
+                            val isNew = previousState == null
+                            val minedHeightChanged = previousState?.minedHeight != tx.minedHeight
+                            val stateChanged = previousState?.transactionState != tx.transactionState
+
+                            if (isNew || minedHeightChanged || stateChanged) {
+                                transactionsToEmit.add(tx)
+                                // Update our tracking
+                                emittedForAlias[txId] =
+                                    EmittedTxState(
+                                        minedHeight = tx.minedHeight,
+                                        transactionState = tx.transactionState,
+                                    )
+                            }
+                        }
+
+                        if (transactionsToEmit.isEmpty()) {
+                            return@launch
+                        }
+
                         val nativeArray = Arguments.createArray()
-                        txList
-                            .filter { tx -> tx.transactionState != TransactionState.Expired }
+                        transactionsToEmit
                             .map { tx ->
                                 launch {
                                     val parsedTx = parseTx(wallet, tx)
@@ -109,10 +146,7 @@ class RNZcashModule(
 
                         sendEvent("TransactionEvent") { args ->
                             args.putString("alias", alias)
-                            args.putArray(
-                                "transactions",
-                                nativeArray,
-                            )
+                            args.putArray("transactions", nativeArray)
                         }
                     }
                 }
@@ -241,6 +275,9 @@ class RNZcashModule(
     ) {
         val wallet = getWallet(alias)
         moduleScope.launch {
+            // Clear emitted transactions tracking and starting block height for this alias
+            emittedTransactions[alias]?.clear()
+
             wallet.coroutineScope
                 .async {
                     wallet.rewindToNearestHeight(wallet.latestBirthdayHeight)
