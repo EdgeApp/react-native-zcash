@@ -104,7 +104,9 @@ class RNZcash: RCTEventEmitter {
         spendParamsURL: try! spendParamsURLHelper(alias),
         outputParamsURL: try! outputParamsURLHelper(alias),
         saplingParamsSourceURL: SaplingParamsSourceURL.default,
-        alias: ZcashSynchronizerAlias.custom(alias)
+        alias: ZcashSynchronizerAlias.custom(alias),
+        isTorEnabled: false,
+        isExchangeRateEnabled: false
       )
       if await synchronizerStore.get(alias) == nil {
         do {
@@ -116,8 +118,13 @@ class RNZcash: RCTEventEmitter {
           _ = try await wallet.synchronizer.prepare(
             with: seedBytes,
             walletBirthday: birthdayHeight,
-            for: initMode
+            for: initMode,
+            name: alias,
+            keySource: nil
           )
+          let accounts = try await wallet.synchronizer.listAccounts()
+          let accountUUID = accounts.first(where: { $0.name == alias })?.id
+          wallet.accountUUID = accountUUID
           try await wallet.synchronizer.start()
           wallet.subscribe()
           await synchronizerStore.set(wallet, for: alias)
@@ -135,14 +142,16 @@ class RNZcash: RCTEventEmitter {
   @objc func stop(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
-  ) async {
-    if let wallet = await synchronizerStore.get(alias) {
-      wallet.synchronizer.stop()
-      wallet.cancellables.forEach { $0.cancel() }
-      await synchronizerStore.remove(alias)
-      resolve(nil)
-    } else {
-      reject("StopError", "Wallet does not exist", genericError)
+  ) {
+    Task {
+      if let wallet = await synchronizerStore.get(alias) {
+        wallet.synchronizer.stop()
+        wallet.cancellables.forEach { $0.cancel() }
+        await synchronizerStore.remove(alias)
+        resolve(nil)
+      } else {
+        reject("StopError", "Wallet does not exist", genericError)
+      }
     }
   }
 
@@ -173,8 +182,8 @@ class RNZcash: RCTEventEmitter {
       do {
         let endpoint = LightWalletEndpoint(address: host, port: port, secure: true)
         let lightwalletd: LightWalletService = LightWalletGRPCService(endpoint: endpoint)
-        let height = try await lightwalletd.latestBlockHeight()
-        lightwalletd.closeConnection()
+        let height = try await lightwalletd.latestBlockHeight(mode: ServiceMode.direct)
+        await lightwalletd.closeConnections()
         resolve(height)
       } catch {
         reject("getLatestNetworkHeightGrpc", "Failed to query blockheight", error)
@@ -200,8 +209,12 @@ class RNZcash: RCTEventEmitter {
           if memo != "" {
             sdkMemo = try Memo(string: memo)
           }
+          guard let accountUUID = wallet.accountUUID else {
+            reject("ProposeTransferError", "Account UUID not found", genericError)
+            return
+          }
           let proposal = try await wallet.synchronizer.proposeTransfer(
-            accountIndex: 0,
+            accountUUID: accountUUID,
             recipient: Recipient(toAddress, network: wallet.synchronizer.network.networkType),
             amount: Zatoshi(amount!),
             memo: sdkMemo
@@ -254,7 +267,7 @@ class RNZcash: RCTEventEmitter {
             case .success(let txId):
               lastTxid = txId.toHexStringTxId()
               continue
-            case let .submitFailure(txId: _, code: code, description: description):
+            case .submitFailure(txId: _, let code, let description):
               throw NSError(
                 domain:
                   "transaction failed to submit with code: \(code) - description: \(description)",
@@ -291,12 +304,52 @@ class RNZcash: RCTEventEmitter {
           let sdkMemo = try Memo(string: memo)
           let shieldingThreshold = Int64(threshold) ?? 10000
 
-          let tx = try await wallet.synchronizer.shieldFunds(
-            spendingKey: spendingKey,
-            memo: sdkMemo,
-            shieldingThreshold: Zatoshi(shieldingThreshold)
+          guard let accountUUID = wallet.accountUUID else {
+            reject("shieldFunds", "Account UUID not found", genericError)
+            return
+          }
+
+          guard
+            let proposal = try await wallet.synchronizer.proposeShielding(
+              accountUUID: accountUUID,
+              shieldingThreshold: Zatoshi(shieldingThreshold),
+              memo: sdkMemo
+            )
+          else {
+            throw NSError(
+              domain: "shieldFunds",
+              code: -1,
+              userInfo: [NSLocalizedDescriptionKey: "Proposal was nil"]
+            )
+
+          }
+
+          let stream = try await wallet.synchronizer.createProposedTransactions(
+            proposal: proposal,
+            spendingKey: spendingKey
           )
-          resolve(tx.rawID.toHexStringTxId())
+
+          if let result = try await stream.first(where: { _ in true }) {
+            switch result {
+            case .success(let txId):
+              resolve(txId.toHexStringTxId())
+              return
+
+            default:
+              throw NSError(
+                domain: "shieldFunds",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed: \(result)"]
+              )
+            }
+          } else {
+            // Stream ended without producing any result
+            throw NSError(
+              domain: "shieldFunds",
+              code: -1,
+              userInfo: [NSLocalizedDescriptionKey: "No result returned"]
+            )
+          }
         } catch {
           reject("shieldFunds", "Failed to shield funds", genericError)
         }
@@ -352,7 +405,8 @@ class RNZcash: RCTEventEmitter {
   {
     let derivationTool = DerivationTool(networkType: network.networkType)
     let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
-    let spendingKey = try derivationTool.deriveUnifiedSpendingKey(seed: seedBytes, accountIndex: 0)
+    let spendingKey = try derivationTool.deriveUnifiedSpendingKey(
+      seed: seedBytes, accountIndex: Zip32AccountIndex(0))
     return spendingKey
   }
 
@@ -385,10 +439,16 @@ class RNZcash: RCTEventEmitter {
     Task {
       if let wallet = await synchronizerStore.get(alias) {
         do {
-          let unifiedAddress = try await wallet.synchronizer.getUnifiedAddress(accountIndex: 0)
-          let saplingAddress = try await wallet.synchronizer.getSaplingAddress(accountIndex: 0)
+          guard let accountUUID = wallet.accountUUID else {
+            reject("deriveUnifiedAddress", "Account UUID not found", genericError)
+            return
+          }
+          let unifiedAddress = try await wallet.synchronizer.getUnifiedAddress(
+            accountUUID: accountUUID)
+          let saplingAddress = try await wallet.synchronizer.getSaplingAddress(
+            accountUUID: accountUUID)
           let transparentAddress = try await wallet.synchronizer.getTransparentAddress(
-            accountIndex: 0)
+            accountUUID: accountUUID)
           let addresses: NSDictionary = [
             "unifiedAddress": unifiedAddress.stringEncoded,
             "saplingAddress": saplingAddress.stringEncoded,
@@ -443,6 +503,7 @@ class RNZcash: RCTEventEmitter {
 
 class WalletSynchronizer: NSObject {
   public var alias: String
+  public var accountUUID: AccountUUID?
   public var synchronizer: SDKSynchronizer
   var status: String
   var emit: (String, Any) -> Void
@@ -530,7 +591,7 @@ class WalletSynchronizer: NSObject {
     var scanProgress = 0
 
     switch event.internalSyncStatus {
-    case .syncing(let progress):
+    case .syncing(let progress, _):
       scanProgress = Int(floor(progress * 100))
     case .synced:
       scanProgress = 100
@@ -564,9 +625,19 @@ class WalletSynchronizer: NSObject {
   }
 
   func updateBalanceState(event: SynchronizerState) {
-    let transparentBalance = event.accountBalance?.unshielded ?? Zatoshi(0)
-    let shieldedBalance = event.accountBalance?.saplingBalance ?? PoolBalance.zero
-    let orchardBalance = event.accountBalance?.orchardBalance ?? PoolBalance.zero
+    guard let accountUUID = self.accountUUID else {
+      return
+    }
+
+    // Safely check if the account exists in the balances dictionary
+    guard let accountBalance = event.accountsBalances[accountUUID] else {
+      return
+    }
+
+    // Account exists, safely access the balance properties
+    let transparentBalance = accountBalance.unshielded
+    let shieldedBalance = accountBalance.saplingBalance
+    let orchardBalance = accountBalance.orchardBalance
 
     let transparentAvailableZatoshi = transparentBalance
     let transparentTotalZatoshi = transparentBalance
@@ -594,7 +665,7 @@ class WalletSynchronizer: NSObject {
       minedHeight: tx.minedHeight ?? 0,
       rawTransactionId: (tx.rawID.toHexStringTxId()),
       blockTimeInSeconds: Int(tx.blockTime ?? 0),
-      value: String(describing: abs(tx.value.amount))
+      value: String(describing: abs(tx.value.amount)),
     )
     if tx.raw != nil {
       confTx.raw = tx.raw!.hexEncodedString()
@@ -606,7 +677,7 @@ class WalletSynchronizer: NSObject {
       let recipients = await self.synchronizer.getRecipients(for: tx)
       if recipients.count > 0 {
         let addresses = recipients.compactMap {
-          if case let .address(address) = $0 {
+          if case .address(let address) = $0 {
             return address
           } else {
             return nil
@@ -640,6 +711,22 @@ class WalletSynchronizer: NSObject {
       emit("TransactionEvent", data)
     }
   }
+}
+
+extension AccountUUID {
+  static func fromAlias(_ alias: String) -> AccountUUID {
+    let bytes = Array(alias.utf8)
+    let folded = foldTo16Bytes(bytes)
+    return AccountUUID(id: folded)
+  }
+}
+
+func foldTo16Bytes(_ bytes: [UInt8]) -> [UInt8] {
+  var out = [UInt8](repeating: 0, count: 16)
+  for (i, b) in bytes.enumerated() {
+    out[i % 16] ^= b
+  }
+  return out
 }
 
 // Local file helper funcs

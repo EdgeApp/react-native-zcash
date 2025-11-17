@@ -25,14 +25,14 @@ function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/Electric-Coin-Company/zcash-swift-wallet-sdk.git',
-    // 2.2.6:
-    'ce25f074b480d46d76c1fc20f0f0fe37d879a2c9'
+    // 2.4.0:
+    '1cf8a2375264995224f8282eaf63931439c28368'
   )
   getRepo(
     'zcash-light-client-ffi',
     'https://github.com/Electric-Coin-Company/zcash-light-client-ffi.git',
-    // 0.10.2:
-    '7029804dc30d33b689fb8da712c1172daf8e402e'
+    // 0.19.0:
+    'a7211faa2cea15db017fa138043ba712f61724a2'
   )
 }
 
@@ -95,6 +95,35 @@ async function copySwift(): Promise<void> {
       // We are lumping everything into one module,
       // so we don't need to import this externally:
       .replace('import libzcashlc', '')
+
+      // Rename Swift struct to avoid conflict with C struct from zcashlc.h
+      .replace(
+        /public struct ConfirmationsPolicy\s*\{/g,
+        'public struct SwiftConfirmationsPolicy {'
+      )
+      .replace(
+        /\bConfirmationsPolicy\.init\(/g,
+        'SwiftConfirmationsPolicy.init('
+      )
+      .replace(
+        /\bConfirmationsPolicy\.default/g,
+        'SwiftConfirmationsPolicy.default'
+      )
+      .replace(/:\s*ConfirmationsPolicy\s*=/g, ': SwiftConfirmationsPolicy =')
+      .replace(/\bConfirmationsPolicy\s*:/g, 'SwiftConfirmationsPolicy:')
+      .replace(/libzcashlc\.ConfirmationsPolicy/g, 'ConfirmationsPolicy')
+
+      // Replace serializedBytes with serializedData
+      .replace(
+        /LightdInfo\(serializedBytes:\s*data\)/g,
+        'LightdInfo(serializedData: data)'
+      )
+      .replace(
+        /TreeState\(serializedBytes:\s*data\)/g,
+        'TreeState(serializedData: data)'
+      )
+      .replace(/FfiProposal\(serializedBytes:/g, 'FfiProposal(serializedData:')
+
       // The Swift package manager synthesizes a "Bundle.module" accessor,
       // but with CocoaPods we need to load things manually:
       .replace(
