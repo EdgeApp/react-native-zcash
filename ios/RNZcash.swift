@@ -49,28 +49,6 @@ struct ConfirmedTx {
   }
 }
 
-struct TotalBalances {
-  var transparentAvailableZatoshi: Zatoshi
-  var transparentTotalZatoshi: Zatoshi
-  var saplingAvailableZatoshi: Zatoshi
-  var saplingTotalZatoshi: Zatoshi
-  var orchardAvailableZatoshi: Zatoshi
-  var orchardTotalZatoshi: Zatoshi
-  var dictionary: [String: Any] {
-    return [
-      "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
-      "transparentTotalZatoshi": String(transparentTotalZatoshi.amount),
-      "saplingAvailableZatoshi": String(saplingAvailableZatoshi.amount),
-      "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
-      "orchardAvailableZatoshi": String(orchardAvailableZatoshi.amount),
-      "orchardTotalZatoshi": String(orchardTotalZatoshi.amount),
-    ]
-  }
-  var nsDictionary: NSDictionary {
-    return dictionary as NSDictionary
-  }
-}
-
 struct ProcessorState {
   var scanProgress: Int
   var networkBlockHeight: Int
@@ -477,7 +455,6 @@ class WalletSynchronizer: NSObject {
   var restart: Bool
   var processorState: ProcessorState
   var cancellables: [AnyCancellable] = []
-  var balances: TotalBalances
 
   init(alias: String, initializer: Initializer, emitter: @escaping (String, Any) -> Void) throws {
     self.alias = alias
@@ -490,13 +467,6 @@ class WalletSynchronizer: NSObject {
       scanProgress: 0,
       networkBlockHeight: 0
     )
-    self.balances = TotalBalances(
-      transparentAvailableZatoshi: Zatoshi(0),
-      transparentTotalZatoshi: Zatoshi(0),
-      saplingAvailableZatoshi: Zatoshi(0),
-      saplingTotalZatoshi: Zatoshi(0),
-      orchardAvailableZatoshi: Zatoshi(0),
-      orchardTotalZatoshi: Zatoshi(0))
   }
 
   public func subscribe() {
@@ -596,13 +566,6 @@ class WalletSynchronizer: NSObject {
       scanProgress: 0,
       networkBlockHeight: 0
     )
-    self.balances = TotalBalances(
-      transparentAvailableZatoshi: Zatoshi(0),
-      transparentTotalZatoshi: Zatoshi(0),
-      saplingAvailableZatoshi: Zatoshi(0),
-      saplingTotalZatoshi: Zatoshi(0),
-      orchardAvailableZatoshi: Zatoshi(0),
-      orchardTotalZatoshi: Zatoshi(0))
   }
 
   func updateBalanceState(event: SynchronizerState) {
@@ -619,16 +582,15 @@ class WalletSynchronizer: NSObject {
     let orchardAvailableZatoshi = orchardBalance.spendableValue
     let orchardTotalZatoshi = orchardBalance.total()
 
-    self.balances = TotalBalances(
-      transparentAvailableZatoshi: transparentAvailableZatoshi,
-      transparentTotalZatoshi: transparentTotalZatoshi,
-      saplingAvailableZatoshi: saplingAvailableZatoshi,
-      saplingTotalZatoshi: saplingTotalZatoshi,
-      orchardAvailableZatoshi: orchardAvailableZatoshi,
-      orchardTotalZatoshi: orchardTotalZatoshi
-    )
-    let data = NSMutableDictionary(dictionary: self.balances.nsDictionary)
-    data["alias"] = self.alias
+    let data: NSDictionary = [
+      "alias": self.alias,
+      "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
+      "transparentTotalZatoshi": String(transparentTotalZatoshi.amount),
+      "saplingAvailableZatoshi": String(saplingAvailableZatoshi.amount),
+      "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
+      "orchardAvailableZatoshi": String(orchardAvailableZatoshi.amount),
+      "orchardTotalZatoshi": String(orchardTotalZatoshi.amount),
+    ]
     emit("BalanceEvent", data)
   }
 
