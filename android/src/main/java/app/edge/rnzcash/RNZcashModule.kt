@@ -385,13 +385,7 @@ class RNZcashModule(
                         memo,
                     )
                 val tx = wallet.coroutineScope.async { wallet.transactions.first().first() }.await()
-                val parsedTx = parseTx(wallet, tx)
-
-                // Hack: Memos aren't ready to be queried right after broadcast
-                val memos = Arguments.createArray()
-                memos.pushString(memo)
-                parsedTx.putArray("memos", memos)
-                promise.resolve(parsedTx)
+                promise.resolve(tx.txIdString())
             } catch (t: Throwable) {
                 promise.reject("Err", t)
             }

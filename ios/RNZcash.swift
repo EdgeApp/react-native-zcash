@@ -296,12 +296,7 @@ class RNZcash: RCTEventEmitter {
             memo: sdkMemo,
             shieldingThreshold: Zatoshi(shieldingThreshold)
           )
-
-          var confTx = await wallet.parseTx(tx: tx)
-
-          // Hack: Memos aren't ready to be queried right after broadcast
-          confTx.memos = [memo]
-          resolve(confTx.nsDictionary)
+          resolve(tx.rawID.toHexStringTxId())
         } catch {
           reject("shieldFunds", "Failed to shield funds", genericError)
         }
