@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- changed: Upgrade iOS and Android sdks to v2.4.0
+
 ## 0.9.13 (2025-11-04)
 
 - changed: Updated checkpoints

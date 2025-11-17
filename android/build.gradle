@@ -1,14 +1,14 @@
 buildscript {
   def kotlinVersion = rootProject.ext.has('kotlinVersion')
     ? rootProject.ext.get('kotlinVersion')
-    : '1.9.23'
+    : '2.1.10'
 
   repositories {
     mavenCentral()
     google()
   }
   dependencies {
-    classpath 'com.android.tools.build:gradle:7.3.1'
+    classpath 'com.android.tools.build:gradle:8.5.0'
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}"
   }
 }
@@ -22,10 +22,10 @@ def safeExtGet(prop, fallback) {
 }
 
 android {
-  compileSdkVersion safeExtGet('compileSdkVersion', 32)
+  compileSdkVersion safeExtGet('compileSdkVersion', 35)
   defaultConfig {
     minSdkVersion safeExtGet('minSdkVersion', 27)
-    targetSdkVersion safeExtGet('targetSdkVersion', 32)
+    targetSdkVersion safeExtGet('targetSdkVersion', 35)
   }
   lintOptions {
     abortOnError false
@@ -49,8 +49,8 @@ dependencies {
 
   implementation 'androidx.appcompat:appcompat:1.6.1'
   implementation 'androidx.paging:paging-runtime-ktx:2.1.2'
-  implementation 'cash.z.ecc.android:zcash-android-sdk:2.2.5'
-  implementation 'cash.z.ecc.android:zcash-android-sdk-incubator:2.2.5'
+  implementation 'cash.z.ecc.android:zcash-android-sdk:2.4.0'
+  implementation 'cash.z.ecc.android:zcash-android-sdk-incubator:2.4.0'
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
 }
