@@ -31,6 +31,7 @@ struct ConfirmedTx {
   var blockTimeInSeconds: Int
   var value: String
   var fee: String?
+  var isShielding: Bool
   var memos: [String]?
   var dictionary: [String: Any?] {
     return [
@@ -42,6 +43,7 @@ struct ConfirmedTx {
       "value": value,
       "fee": fee,
       "memos": memos ?? [],
+      "isShielding": isShielding,
     ]
   }
   var nsDictionary: NSDictionary {
@@ -666,6 +668,7 @@ class WalletSynchronizer: NSObject {
       rawTransactionId: (tx.rawID.toHexStringTxId()),
       blockTimeInSeconds: Int(tx.blockTime ?? 0),
       value: String(describing: abs(tx.value.amount)),
+      isShielding: tx.isShielding,
     )
     if tx.raw != nil {
       confTx.raw = tx.raw!.hexEncodedString()

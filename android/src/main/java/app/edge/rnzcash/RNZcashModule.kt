@@ -208,6 +208,7 @@ class RNZcashModule(
                 map.putInt("minedHeight", tx.minedHeight?.value?.toInt() ?: 0)
                 map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds?.toInt() ?: 0)
                 map.putString("rawTransactionId", tx.txId.txIdString())
+                map.putBoolean("isShielding", tx.isShielding)
                 tx.raw
                     ?.byteArray
                     ?.toHex()
