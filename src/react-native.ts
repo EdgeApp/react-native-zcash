@@ -14,8 +14,7 @@ import {
   ProposeTransferOpts,
   ShieldFundsInfo,
   SpendFailure,
-  SynchronizerCallbacks,
-  Transaction
+  SynchronizerCallbacks
 } from './types'
 export * from './types'
 
@@ -110,7 +109,7 @@ export class Synchronizer {
     return result
   }
 
-  async shieldFunds(shieldFundsInfo: ShieldFundsInfo): Promise<Transaction> {
+  async shieldFunds(shieldFundsInfo: ShieldFundsInfo): Promise<string> {
     const result = await RNZcash.shieldFunds(
       this.alias,
       shieldFundsInfo.seed,

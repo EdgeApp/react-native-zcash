@@ -102,6 +102,8 @@ export interface Transaction {
   value: string
   fee?: string
   toAddress?: string
+  isShielding: boolean
+  isExpired: boolean
   memos: string[]
 }
 

@@ -12,7 +12,6 @@ import cash.z.ecc.android.sdk.type.*
 import co.electriccoin.lightwallet.client.LightWalletClient
 import co.electriccoin.lightwallet.client.model.LightWalletEndpoint
 import co.electriccoin.lightwallet.client.model.Response
-import co.electriccoin.lightwallet.client.new
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +31,15 @@ class RNZcashModule(
      */
     private var moduleScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
     private var synchronizerMap = mutableMapOf<String, SdkSynchronizer>()
+
+    // Track emitted transactions per alias to only emit new or updated transactions
+    private val emittedTransactions = mutableMapOf<String, MutableMap<String, EmittedTxState>>()
+
+    // Data class to track what we've emitted for each transaction
+    private data class EmittedTxState(
+        val minedHeight: BlockHeight?,
+        val transactionState: TransactionState,
+    )
 
     private val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
 
@@ -57,13 +65,19 @@ class RNZcashModule(
                 if (!synchronizerMap.containsKey(alias)) {
                     synchronizerMap[alias] =
                         Synchronizer.new(
-                            reactApplicationContext,
-                            network,
                             alias,
-                            endpoint,
-                            seedPhrase.toByteArray(),
                             BlockHeight.new(birthdayHeight.toLong()),
+                            reactApplicationContext,
+                            endpoint,
+                            AccountCreateSetup(
+                                accountName = alias,
+                                keySource = null,
+                                seed = FirstClassByteArray(seedPhrase.toByteArray()),
+                            ),
                             initMode,
+                            network,
+                            false, // isTorEnabled
+                            false, // isExchangeRateEnabled
                         ) as SdkSynchronizer
                 }
                 val wallet = getWallet(alias)
@@ -90,11 +104,39 @@ class RNZcashModule(
                         args.putString("name", status.toString())
                     }
                 }
-                wallet.transactions.collectWith(scope) { txList ->
+                wallet.allTransactions.collectWith(scope) { txList ->
                     scope.launch {
+                        // Get or create the tracking map for this alias
+                        val emittedForAlias = emittedTransactions.getOrPut(alias) { mutableMapOf() }
+
+                        val transactionsToEmit = mutableListOf<TransactionOverview>()
+
+                        txList.forEach { tx ->
+                            val txId = tx.txId.txIdString()
+                            val previousState = emittedForAlias[txId]
+
+                            // Check if this is a new transaction or if minedHeight/transactionState changed
+                            val isNew = previousState == null
+                            val minedHeightChanged = previousState?.minedHeight != tx.minedHeight
+                            val stateChanged = previousState?.transactionState != tx.transactionState
+
+                            if (isNew || minedHeightChanged || stateChanged) {
+                                transactionsToEmit.add(tx)
+                                // Update our tracking
+                                emittedForAlias[txId] =
+                                    EmittedTxState(
+                                        minedHeight = tx.minedHeight,
+                                        transactionState = tx.transactionState,
+                                    )
+                            }
+                        }
+
+                        if (transactionsToEmit.isEmpty()) {
+                            return@launch
+                        }
+
                         val nativeArray = Arguments.createArray()
-                        txList
-                            .filter { tx -> tx.transactionState != TransactionState.Expired }
+                        transactionsToEmit
                             .map { tx ->
                                 launch {
                                     val parsedTx = parseTx(wallet, tx)
@@ -104,27 +146,15 @@ class RNZcashModule(
 
                         sendEvent("TransactionEvent") { args ->
                             args.putString("alias", alias)
-                            args.putArray(
-                                "transactions",
-                                nativeArray,
-                            )
+                            args.putArray("transactions", nativeArray)
                         }
                     }
                 }
-                combine(
-                    wallet.transparentBalance,
-                    wallet.saplingBalances,
-                    wallet.orchardBalances,
-                ) { transparentBalance: Zatoshi?, saplingBalances: WalletBalance?, orchardBalances: WalletBalance? ->
-                    return@combine Balances(
-                        transparentBalance = transparentBalance,
-                        saplingBalances = saplingBalances,
-                        orchardBalances = orchardBalances,
-                    )
-                }.collectWith(scope) { map ->
-                    val transparentBalance = map.transparentBalance
-                    val saplingBalances = map.saplingBalances
-                    val orchardBalances = map.orchardBalances
+                wallet.walletBalances.collectWith(scope) { balancesMap ->
+                    val accountBalance = balancesMap?.values?.firstOrNull()
+                    val transparentBalance = accountBalance?.unshielded
+                    val saplingBalances = accountBalance?.sapling
+                    val orchardBalances = accountBalance?.orchard
 
                     val transparentAvailableZatoshi = transparentBalance ?: Zatoshi(0L)
                     val transparentTotalZatoshi = transparentBalance ?: Zatoshi(0L)
@@ -188,11 +218,15 @@ class RNZcashModule(
         alias: String,
         promise: Promise,
     ) {
-        promise.wrap {
-            val wallet = getWallet(alias)
-            wallet.close()
-            synchronizerMap.remove(alias)
-            return@wrap null
+        val wallet = getWallet(alias)
+        moduleScope.launch {
+            try {
+                wallet.closeFlow().first()
+                synchronizerMap.remove(alias)
+                promise.resolve(null)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
         }
     }
 
@@ -204,19 +238,20 @@ class RNZcashModule(
         val job =
             wallet.coroutineScope.launch {
                 map.putString("value", tx.netValue.value.toString())
-                if (tx.feePaid != null) {
-                    map.putString("fee", tx.feePaid!!.value.toString())
-                }
+                tx.feePaid?.let { fee -> map.putString("fee", fee.value.toString()) }
                 map.putInt("minedHeight", tx.minedHeight?.value?.toInt() ?: 0)
                 map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds?.toInt() ?: 0)
-                map.putString("rawTransactionId", tx.txIdString())
-                if (tx.raw != null) {
-                    map.putString("raw", tx.raw!!.byteArray.toHex())
-                }
+                map.putString("rawTransactionId", tx.txId.txIdString())
+                map.putBoolean("isShielding", tx.isShielding)
+                map.putBoolean("isExpired", tx.transactionState == TransactionState.Expired)
+                tx.raw
+                    ?.byteArray
+                    ?.toHex()
+                    ?.let { hex -> map.putString("raw", hex) }
                 if (tx.isSentTransaction) {
                     try {
                         val recipient = wallet.getRecipients(tx).first()
-                        if (recipient is TransactionRecipient.Address) {
+                        if (recipient.addressValue != null) {
                             map.putString("toAddress", recipient.addressValue)
                         }
                     } catch (t: Throwable) {
@@ -240,11 +275,15 @@ class RNZcashModule(
         promise: Promise,
     ) {
         val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            promise.wrap {
-                wallet.rewindToNearestHeight(wallet.latestBirthdayHeight)
-                return@wrap null
-            }
+        moduleScope.launch {
+            // Clear emitted transactions tracking and starting block height for this alias
+            emittedTransactions[alias]?.clear()
+
+            wallet.coroutineScope
+                .async {
+                    wallet.rewindToNearestHeight(wallet.latestBirthdayHeight)
+                }.await()
+            promise.resolve(null)
         }
     }
 
@@ -303,6 +342,10 @@ class RNZcashModule(
                             response.toThrowable(),
                         )
                     }
+
+                    else -> {
+                        throw Exception("Unknown response type")
+                    }
                 }
             }
         }
@@ -319,9 +362,10 @@ class RNZcashModule(
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
             try {
+                val account = wallet.getAccounts().first()
                 val proposal =
                     wallet.proposeTransfer(
-                        Account.DEFAULT,
+                        account,
                         toAddress,
                         Zatoshi(zatoshi.toLong()),
                         memo,
@@ -349,7 +393,12 @@ class RNZcashModule(
         wallet.coroutineScope.launch {
             try {
                 val seedPhrase = SeedPhrase.new(seed)
-                val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
+                val usk =
+                    DerivationTool.getInstance().deriveUnifiedSpendingKey(
+                        seedPhrase.toByteArray(),
+                        wallet.network,
+                        Zip32AccountIndex.new(0),
+                    )
                 val proposalByteArray = Base64.getDecoder().decode(proposalBase64)
                 val proposal = Proposal.fromByteArray(proposalByteArray)
 
@@ -377,21 +426,32 @@ class RNZcashModule(
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
             try {
+                val account = wallet.getAccounts().first()
+                val proposal = wallet.proposeShielding(account, Zatoshi(threshold.toLong()), memo, null)
+                if (proposal == null) {
+                    promise.reject("Err", Exception("Failed to propose shielding transaction"))
+                    return@launch
+                }
                 val seedPhrase = SeedPhrase.new(seed)
-                val usk = DerivationTool.getInstance().deriveUnifiedSpendingKey(seedPhrase.toByteArray(), wallet.network, Account.DEFAULT)
-                val internalId =
-                    wallet.shieldFunds(
-                        usk,
-                        memo,
+                val usk =
+                    DerivationTool.getInstance().deriveUnifiedSpendingKey(
+                        seedPhrase.toByteArray(),
+                        wallet.network,
+                        Zip32AccountIndex.new(0),
                     )
-                val tx = wallet.coroutineScope.async { wallet.transactions.first().first() }.await()
-                val parsedTx = parseTx(wallet, tx)
+                val result =
+                    wallet.createProposedTransactions(
+                        proposal,
+                        usk,
+                    )
+                val shieldingTx = result.first()
 
-                // Hack: Memos aren't ready to be queried right after broadcast
-                val memos = Arguments.createArray()
-                memos.pushString(memo)
-                parsedTx.putArray("memos", memos)
-                promise.resolve(parsedTx)
+                if (shieldingTx is TransactionSubmitResult.Success) {
+                    val shieldingTxid = shieldingTx.txIdString()
+                    promise.resolve(shieldingTxid)
+                } else {
+                    promise.reject("Err", Exception("Failed to create shielding transaction"))
+                }
             } catch (t: Throwable) {
                 promise.reject("Err", t)
             }
@@ -409,16 +469,19 @@ class RNZcashModule(
     ) {
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
-            promise.wrap {
-                val unifiedAddress = wallet.getUnifiedAddress(Account(0))
-                val saplingAddress = wallet.getSaplingAddress(Account(0))
-                val transparentAddress = wallet.getTransparentAddress(Account(0))
+            try {
+                val account = wallet.getAccounts().first()
+                val unifiedAddress = wallet.getUnifiedAddress(account)
+                val saplingAddress = wallet.getSaplingAddress(account)
+                val transparentAddress = wallet.getTransparentAddress(account)
 
                 val map = Arguments.createMap()
                 map.putString("unifiedAddress", unifiedAddress)
                 map.putString("saplingAddress", saplingAddress)
                 map.putString("transparentAddress", transparentAddress)
-                return@wrap map
+                promise.resolve(map)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
             }
         }
     }
@@ -474,10 +537,4 @@ class RNZcashModule(
             .getJSModule(RCTDeviceEventEmitter::class.java)
             .emit(eventName, args)
     }
-
-    data class Balances(
-        val transparentBalance: Zatoshi?,
-        val saplingBalances: WalletBalance?,
-        val orchardBalances: WalletBalance?,
-    )
 }
