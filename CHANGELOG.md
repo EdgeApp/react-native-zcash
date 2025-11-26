@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fixed: iOS - get UUID after starting synchronizer
+
 ## 0.10.0 (2025-11-18)
 
 - changed: Upgrade iOS and Android sdks to v2.4.0

@@ -118,6 +118,7 @@ class RNZcash: RCTEventEmitter {
             alias: alias, initializer: initializer, emitter: sendToJs)
           let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
           let initMode = newWallet ? WalletInitMode.newWallet : WalletInitMode.existingWallet
+          let ufvk = try deriveUnifiedViewingKey(seed, network)
 
           _ = try await wallet.synchronizer.prepare(
             with: seedBytes,
@@ -126,10 +127,10 @@ class RNZcash: RCTEventEmitter {
             name: alias,
             keySource: nil
           )
-          let accounts = try await wallet.synchronizer.listAccounts()
-          let accountUUID = accounts.first(where: { $0.name == alias })?.id
-          wallet.accountUUID = accountUUID
           try await wallet.synchronizer.start()
+          let accounts = try await wallet.synchronizer.listAccounts()
+          let accountUUID = accounts.first(where: { $0.ufvk == ufvk })?.id
+          wallet.accountUUID = accountUUID
           wallet.subscribe()
           await synchronizerStore.set(wallet, for: alias)
           resolve(nil)
@@ -717,14 +718,6 @@ class WalletSynchronizer: NSObject {
       let data: NSDictionary = ["alias": self.alias, "transactions": NSArray(array: out)]
       emit("TransactionEvent", data)
     }
-  }
-}
-
-extension AccountUUID {
-  static func fromAlias(_ alias: String) -> AccountUUID {
-    let bytes = Array(alias.utf8)
-    let folded = foldTo16Bytes(bytes)
-    return AccountUUID(id: folded)
   }
 }
 
