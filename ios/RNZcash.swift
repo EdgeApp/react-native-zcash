@@ -126,10 +126,10 @@ class RNZcash: RCTEventEmitter {
             name: alias,
             keySource: nil
           )
+          try await wallet.synchronizer.start()
           let accounts = try await wallet.synchronizer.listAccounts()
           let accountUUID = accounts.first(where: { $0.name == alias })?.id
           wallet.accountUUID = accountUUID
-          try await wallet.synchronizer.start()
           wallet.subscribe()
           await synchronizerStore.set(wallet, for: alias)
           resolve(nil)
