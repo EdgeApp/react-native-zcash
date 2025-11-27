@@ -381,6 +381,32 @@ class RNZcashModule(
         }
     }
 
+    @ReactMethod
+    fun proposeFulfillingPaymentURI(
+        alias: String,
+        paymentUri: String,
+        promise: Promise,
+    ) {
+        val wallet = getWallet(alias)
+        wallet.coroutineScope.launch {
+            try {
+                val account = wallet.getAccounts().first()
+                val proposal =
+                    wallet.proposeFulfillingPaymentUri(
+                        account,
+                        paymentUri,
+                    )
+                val map = Arguments.createMap()
+                map.putInt("transactionCount", proposal.transactionCount())
+                map.putString("totalFee", proposal.totalFeeRequired().value.toString())
+                map.putString("proposalBase64", Base64.getEncoder().encodeToString(proposal.toByteArray()))
+                promise.resolve(map)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
+        }
+    }
+
     @kotlin.ExperimentalStdlibApi
     @ReactMethod
     fun createTransfer(

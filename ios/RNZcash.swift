@@ -247,6 +247,42 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
+  @objc func proposeFulfillingPaymentURI(
+    _ alias: String, _ paymentUri: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = await synchronizerStore.get(alias) {
+        do {
+          guard let accountUUID = wallet.accountUUID else {
+            reject("proposeFulfillingPaymentURI", "Account UUID not found", genericError)
+            return
+          }
+          let proposal = try await wallet.synchronizer.proposefulfillingPaymentURI(
+            paymentUri,
+            accountUUID: accountUUID
+          )
+          let proposalBase64 = try proposal.inner.serializedData().base64EncodedString()
+
+          let out: NSMutableDictionary = [
+            "proposalBase64": proposalBase64,
+            "transactionCount": proposal.transactionCount(),
+            "totalFee": String(proposal.totalFeeRequired().amount),
+          ]
+
+          resolve(out)
+        } catch let error as ZcashError {
+          reject("proposeFulfillingPaymentURI", "Failed to propose from payment URI", error)
+        } catch {
+          reject("proposeFulfillingPaymentURI", "Unknown error", error)
+        }
+      } else {
+        reject("proposeFulfillingPaymentURI", "Wallet does not exist", genericError)
+      }
+    }
+  }
+
   @objc func createTransfer(
     _ alias: String, _ proposalBase64: String, _ seed: String,
     resolver resolve: @escaping RCTPromiseResolveBlock,
