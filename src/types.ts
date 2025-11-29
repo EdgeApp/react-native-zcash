@@ -16,6 +16,10 @@ export interface ProposeTransferOpts {
   memo?: string
 }
 
+export interface ProposePaymentUriOpts {
+  paymentUri: string
+}
+
 export interface CreateTransferOpts {
   mnemonicSeed: string
   proposalBase64: string
