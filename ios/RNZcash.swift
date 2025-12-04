@@ -118,6 +118,7 @@ class RNZcash: RCTEventEmitter {
             alias: alias, initializer: initializer, emitter: sendToJs)
           let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
           let initMode = newWallet ? WalletInitMode.newWallet : WalletInitMode.existingWallet
+          let ufvk = try deriveUnifiedViewingKey(seed, network)
 
           _ = try await wallet.synchronizer.prepare(
             with: seedBytes,
@@ -126,10 +127,10 @@ class RNZcash: RCTEventEmitter {
             name: alias,
             keySource: nil
           )
-          let accounts = try await wallet.synchronizer.listAccounts()
-          let accountUUID = accounts.first(where: { $0.name == alias })?.id
-          wallet.accountUUID = accountUUID
           try await wallet.synchronizer.start()
+          let accounts = try await wallet.synchronizer.listAccounts()
+          let accountUUID = accounts.first(where: { $0.ufvk == ufvk })?.id
+          wallet.accountUUID = accountUUID
           wallet.subscribe()
           await synchronizerStore.set(wallet, for: alias)
           resolve(nil)
@@ -383,6 +384,14 @@ class RNZcash: RCTEventEmitter {
                 wallet.subscribe()
                 let txs = try await wallet.synchronizer.allTransactions()
                 wallet.emitTxs(transactions: txs)
+                let balances = try await wallet.synchronizer.getAccountsBalances()
+                if let accountUUID = wallet.accountUUID,
+                  let accountBalance = balances[accountUUID]
+                {
+                  let data = wallet.createBalanceEventData(from: accountBalance)
+                  wallet.emit("BalanceEvent", data)
+                }
+
                 resolve(nil)
               case .failure:
                 reject("RescanError", "Failed to rescan wallet", genericError)
@@ -594,6 +603,8 @@ class WalletSynchronizer: NSObject {
   }
 
   func updateProcessorState(event: SynchronizerState) {
+    updateBalanceState(event: event)
+
     var scanProgress = 0
 
     switch event.internalSyncStatus {
@@ -620,7 +631,6 @@ class WalletSynchronizer: NSObject {
       "networkBlockHeight": self.processorState.networkBlockHeight,
     ]
     emit("UpdateEvent", data)
-    updateBalanceState(event: event)
   }
 
   func initializeProcessorState() {
@@ -630,16 +640,7 @@ class WalletSynchronizer: NSObject {
     )
   }
 
-  func updateBalanceState(event: SynchronizerState) {
-    guard let accountUUID = self.accountUUID else {
-      return
-    }
-
-    // Safely check if the account exists in the balances dictionary
-    guard let accountBalance = event.accountsBalances[accountUUID] else {
-      return
-    }
-
+  func createBalanceEventData(from accountBalance: AccountBalance) -> NSDictionary {
     // Account exists, safely access the balance properties
     let transparentBalance = accountBalance.unshielded
     let shieldedBalance = accountBalance.saplingBalance
@@ -654,7 +655,7 @@ class WalletSynchronizer: NSObject {
     let orchardAvailableZatoshi = orchardBalance.spendableValue
     let orchardTotalZatoshi = orchardBalance.total()
 
-    let data: NSDictionary = [
+    return [
       "alias": self.alias,
       "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
       "transparentTotalZatoshi": String(transparentTotalZatoshi.amount),
@@ -662,7 +663,20 @@ class WalletSynchronizer: NSObject {
       "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
       "orchardAvailableZatoshi": String(orchardAvailableZatoshi.amount),
       "orchardTotalZatoshi": String(orchardTotalZatoshi.amount),
-    ]
+    ] as NSDictionary
+  }
+
+  func updateBalanceState(event: SynchronizerState) {
+    guard let accountUUID = self.accountUUID else {
+      return
+    }
+
+    // Safely check if the account exists in the balances dictionary
+    guard let accountBalance = event.accountsBalances[accountUUID] else {
+      return
+    }
+
+    let data = createBalanceEventData(from: accountBalance)
     emit("BalanceEvent", data)
   }
 
@@ -717,14 +731,6 @@ class WalletSynchronizer: NSObject {
       let data: NSDictionary = ["alias": self.alias, "transactions": NSArray(array: out)]
       emit("TransactionEvent", data)
     }
-  }
-}
-
-extension AccountUUID {
-  static func fromAlias(_ alias: String) -> AccountUUID {
-    let bytes = Array(alias.utf8)
-    let folded = foldTo16Bytes(bytes)
-    return AccountUUID(id: folded)
   }
 }
 
