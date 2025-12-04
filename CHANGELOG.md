@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.10.1 (2025-12-04)
+
 - added: `proposeFulfillingPaymentURI` support
 - changed: iOS - Emit balance after rescan
 - fixed: iOS - get UUID after starting synchronizer
