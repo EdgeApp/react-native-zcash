@@ -39,6 +39,12 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
+RCT_EXTERN_METHOD(proposeFulfillingPaymentURI:(NSString *)alias
+:(NSString *)paymentUri
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
+
 RCT_EXTERN_METHOD(createTransfer:(NSString *)alias
 :(NSString *)proposalBase64
 :(NSString *)seed
