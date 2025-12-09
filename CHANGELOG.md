@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.10.2 (2025-12-09)
+
 - changed: Updated checkpoints
 
 ## 0.10.1 (2025-12-04)
