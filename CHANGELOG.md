@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- changed: Updated checkpoints
+
 ## 0.10.1 (2025-12-04)
 
 - added: `proposeFulfillingPaymentURI` support
