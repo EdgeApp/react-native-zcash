@@ -3,7 +3,7 @@
 // It will download third-party source code, modify it,
 // and install it into the correct locations.
 
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import { deepList, justFiles, makeNodeDisklet, navigateDisklet } from 'disklet'
 import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
@@ -160,14 +160,24 @@ async function copySwift(): Promise<void> {
 function getRepo(name: string, uri: string, hash: string): void {
   const path = join(tmp, name)
 
-  // Either clone or fetch:
+  // Clone cheaply, then fetch just the pinned commit if needed:
   if (!existsSync(path)) {
     console.log(`Cloning ${name}...`)
-    loudExec(tmp, ['git', 'clone', uri, name])
-  } else {
-    // We might already have the right commit, so fetch lazily:
+    loudExec(tmp, [
+      'git',
+      'clone',
+      '--no-checkout',
+      '--filter=blob:none',
+      '--no-tags',
+      uri,
+      name
+    ])
+  }
+
+  if (!hasCommit(path, hash)) {
+    console.log(`Fetching ${name}...`)
     try {
-      loudExec(path, ['git', 'fetch'])
+      loudExec(path, ['git', 'fetch', '--depth=1', '--no-tags', 'origin', hash])
     } catch (error) {
       console.log(error)
     }
@@ -175,18 +185,26 @@ function getRepo(name: string, uri: string, hash: string): void {
 
   // Checkout:
   console.log(`Checking out ${name}...`)
-  execSync(`git checkout -f ${hash}`, {
-    cwd: path,
-    stdio: 'inherit',
-    encoding: 'utf8'
-  })
+  loudExec(path, ['git', 'checkout', '-f', hash])
+}
+
+function hasCommit(path: string, hash: string): boolean {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${hash}^{commit}`], {
+      cwd: path,
+      stdio: 'ignore'
+    })
+    return true
+  } catch (error) {
+    return false
+  }
 }
 
 /**
  * Runs a command and displays its results.
  */
 function loudExec(path: string, argv: string[]): void {
-  execSync(argv.join(' '), {
+  execFileSync(argv[0], argv.slice(1), {
     cwd: path,
     stdio: 'inherit',
     encoding: 'utf8'
