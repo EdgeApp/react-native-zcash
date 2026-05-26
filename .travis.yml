@@ -2,7 +2,7 @@ language: node_js
 node_js:
   - "12"
 install:
-  - yarn install --frozen-lockfile
+  - npm ci
 script:
-  - yarn lint
-  - yarn prepare
+  - npm run lint
+  - npm run prepare
