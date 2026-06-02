@@ -21,31 +21,43 @@ async function main(): Promise<void> {
   await copyCheckpoints(disklet)
 }
 
+// The Swift SDK version to vendor. The matching libzcashlc.xcframework is
+// downloaded from this release's assets (see rebuildXcframework).
+const ZCASH_SWIFT_SDK_VERSION = '2.5.1'
+
 function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
-    'https://github.com/Electric-Coin-Company/zcash-swift-wallet-sdk.git',
-    // 2.4.0:
-    '1cf8a2375264995224f8282eaf63931439c28368'
+    'https://github.com/zcash/zcash-swift-wallet-sdk.git',
+    // 2.5.1:
+    '7d947516bf1e5348ec859719cfc1dbafd4d3135e'
   )
-  getRepo(
-    'zcash-light-client-ffi',
-    'https://github.com/Electric-Coin-Company/zcash-light-client-ffi.git',
-    // 0.19.0:
-    'a7211faa2cea15db017fa138043ba712f61724a2'
-  )
+  // libzcashlc is no longer a separate package as of SDK 2.5.x — it ships as a
+  // binaryTarget zip on the SDK's GitHub release, downloaded in rebuildXcframework().
 }
 
 /**
- * Re-packages zcash-light-client-ffi.
+ * Downloads and re-packages the libzcashlc XCFramework.
+ *
+ * As of SDK 2.5.x the FFI ships as a release-asset zip on the Swift SDK repo
+ * (no longer a separate zcash-light-client-ffi package).
  *
  * An XCFramework can either include a static library (.a)
  * or a dynamically-linked library (.framework).
- * The zcash-light-client-ffi package tries to stuff a static library
- * into a dynamic framework, which doesn't work correctly.
+ * The published XCFramework stuffs a static library into a dynamic framework,
+ * which doesn't work correctly.
  * We fix this by simply re-building the XCFramework.
  */
 async function rebuildXcframework(): Promise<void> {
+  // Download the prebuilt libzcashlc XCFramework from the SDK's GitHub release.
+  // (The SDK's Package.swift `.binaryTarget` points at this same asset.)
+  console.log('Downloading libzcashlc XCFramework...')
+  const zipUrl = `https://github.com/zcash/zcash-swift-wallet-sdk/releases/download/${ZCASH_SWIFT_SDK_VERSION}/libzcashlc.xcframework.zip`
+  const zipPath = join(tmp, 'libzcashlc.xcframework.zip')
+  loudExec(tmp, ['curl', '--fail', '--location', '--output', zipPath, zipUrl])
+  await disklet.delete('tmp/libzcashlc.xcframework')
+  loudExec(tmp, ['unzip', '-q', '-o', zipPath])
+
   console.log('Creating XCFramework...')
   await disklet.delete('ios/libzcashlc.xcframework')
 
@@ -53,13 +65,13 @@ async function rebuildXcframework(): Promise<void> {
   await disklet.setData(
     'tmp/lib/ios-simulator/libzcashlc.a',
     await disklet.getData(
-      'tmp/zcash-light-client-ffi/releases/XCFramework/libzcashlc.xcframework/ios-arm64_x86_64-simulator/libzcashlc.framework/libzcashlc'
+      'tmp/libzcashlc.xcframework/ios-arm64_x86_64-simulator/libzcashlc.framework/libzcashlc'
     )
   )
   await disklet.setData(
     'tmp/lib/ios/libzcashlc.a',
     await disklet.getData(
-      'tmp/zcash-light-client-ffi/releases/XCFramework/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/libzcashlc'
+      'tmp/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/libzcashlc'
     )
   )
 
@@ -149,7 +161,7 @@ async function copySwift(): Promise<void> {
   await disklet.setText(
     'ios/zcashlc.h',
     await disklet.getText(
-      'tmp/zcash-light-client-ffi/releases/XCFramework/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/Headers/zcashlc.h'
+      'tmp/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/Headers/zcashlc.h'
     )
   )
 }
