@@ -92,16 +92,20 @@ class RNZcashModule(
                     var networkBlockHeight = map["networkHeight"] as BlockHeight?
                     if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(birthdayHeight.toLong())
 
-                    // Force 100 once the synchronizer reports SYNCED so truncation in
-                    // toPercentage() can't leave a fully-synced wallet stuck below 100.
+                    // Report scan progress as a 0-100 percentage but keep the decimal places
+                    // (no truncation) so consumers get granular, more frequent updates. Force
+                    // 100.0 when SYNCED, and 0.0 when not actively syncing (stopped /
+                    // disconnected / initializing) instead of reusing a stale percentage, to
+                    // match the iOS module.
                     val scanProgress = when (status) {
-                        Synchronizer.Status.SYNCED -> 100
-                        else -> scanProgressDecimal.toPercentage()
+                        Synchronizer.Status.SYNCED -> 100.0
+                        Synchronizer.Status.SYNCING -> scanProgressDecimal.decimal.toDouble() * 100
+                        else -> 0.0
                     }
 
                     sendEvent("UpdateEvent") { args ->
                         args.putString("alias", alias)
-                        args.putInt("scanProgress", scanProgress)
+                        args.putDouble("scanProgress", scanProgress)
                         args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
                     }
                 }

@@ -54,7 +54,7 @@ struct ConfirmedTx {
 }
 
 struct ProcessorState {
-  var scanProgress: Int
+  var scanProgress: Double
   var networkBlockHeight: Int
   var dictionary: [String: Any] {
     return [
@@ -641,15 +641,17 @@ class WalletSynchronizer: NSObject {
   func updateProcessorState(event: SynchronizerState) {
     updateBalanceState(event: event)
 
-    var scanProgress = 0
+    var scanProgress = 0.0
 
     switch event.internalSyncStatus {
     case .syncing(let progress, _):
-      scanProgress = Int(floor(progress * 100))
+      // Report a 0-100 percentage but keep the decimal places (no floor) for
+      // granular progress.
+      scanProgress = Double(progress) * 100
     case .synced:
-      scanProgress = 100
+      scanProgress = 100.0
     case .unprepared, .disconnected, .stopped:
-      scanProgress = 0
+      scanProgress = 0.0
     default:
       return
     }
