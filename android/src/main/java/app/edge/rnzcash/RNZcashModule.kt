@@ -97,11 +97,12 @@ class RNZcashModule(
                     // 100.0 when SYNCED, and 0.0 when not actively syncing (stopped /
                     // disconnected / initializing) instead of reusing a stale percentage, to
                     // match the iOS module.
-                    val scanProgress = when (status) {
-                        Synchronizer.Status.SYNCED -> 100.0
-                        Synchronizer.Status.SYNCING -> scanProgressDecimal.decimal.toDouble() * 100
-                        else -> 0.0
-                    }
+                    val scanProgress =
+                        when (status) {
+                            Synchronizer.Status.SYNCED -> 100.0
+                            Synchronizer.Status.SYNCING -> scanProgressDecimal.decimal.toDouble() * 100
+                            else -> 0.0
+                        }
 
                     sendEvent("UpdateEvent") { args ->
                         args.putString("alias", alias)
