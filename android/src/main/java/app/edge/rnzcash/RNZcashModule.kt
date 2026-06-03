@@ -82,19 +82,30 @@ class RNZcashModule(
                 }
                 val wallet = getWallet(alias)
                 val scope = wallet.coroutineScope
-                combine(wallet.progress, wallet.networkHeight) { progress, networkHeight ->
-                    return@combine mapOf("progress" to progress, "networkHeight" to networkHeight)
+                // Synchronizer.progress now blends scan + recovery and never hits 100%, so
+                // read the un-blended per-wallet scan progress off the processor instead.
+                combine(wallet.processor.scanProgress, wallet.networkHeight, wallet.status) { scanProgress, networkHeight, status ->
+                    return@combine mapOf("scanProgress" to scanProgress, "networkHeight" to networkHeight, "status" to status)
                 }.collectWith(scope) { map ->
-                    val progress = map["progress"] as PercentDecimal
+                    val scanProgressDecimal = map["scanProgress"] as PercentDecimal
+                    val status = map["status"] as Synchronizer.Status
                     var networkBlockHeight = map["networkHeight"] as BlockHeight?
                     if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(birthdayHeight.toLong())
 
+                    // Report scan progress as a 0-100 percentage but keep the decimal places
+                    // (no truncation) so consumers get granular, more frequent updates. Force
+                    // 100.0 when SYNCED, and 0.0 when not actively syncing (stopped /
+                    // disconnected / initializing) instead of reusing a stale percentage, to
+                    // match the iOS module.
+                    val scanProgress = when (status) {
+                        Synchronizer.Status.SYNCED -> 100.0
+                        Synchronizer.Status.SYNCING -> scanProgressDecimal.decimal.toDouble() * 100
+                        else -> 0.0
+                    }
+
                     sendEvent("UpdateEvent") { args ->
                         args.putString("alias", alias)
-                        args.putInt(
-                            "scanProgress",
-                            progress.toPercentage(),
-                        )
+                        args.putDouble("scanProgress", scanProgress)
                         args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
                     }
                 }
@@ -197,10 +208,6 @@ class RNZcashModule(
                     true
                 }
                 wallet.onSetupErrorHandler = { error ->
-                    handleError("error", error)
-                    false
-                }
-                wallet.onSubmissionErrorHandler = { error ->
                     handleError("error", error)
                     false
                 }

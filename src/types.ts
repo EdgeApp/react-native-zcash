@@ -71,7 +71,7 @@ export interface TransactionEvent {
 
 export interface UpdateEvent {
   alias: string
-  scanProgress: number // 0 - 100
+  scanProgress: number // 0 - 100 (may include decimal places)
   networkBlockHeight: number
 }
 
