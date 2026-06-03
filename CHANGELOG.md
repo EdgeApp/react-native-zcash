@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- changed: Upgrade sdks to v2.5.2
+- changed: Use floats for scan progress
+- changed: Updated checkpoints
+
 ## 0.10.7 (2026-04-24)
 
 - changed: Updated checkpoints

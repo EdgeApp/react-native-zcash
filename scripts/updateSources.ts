@@ -4,8 +4,9 @@
 // and install it into the correct locations.
 
 import { execFileSync } from 'child_process'
+import { createHash } from 'crypto'
 import { deepList, justFiles, makeNodeDisklet, navigateDisklet } from 'disklet'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 import { copyCheckpoints } from './copyCheckpoints'
@@ -23,14 +24,22 @@ async function main(): Promise<void> {
 
 // The Swift SDK version to vendor. The matching libzcashlc.xcframework is
 // downloaded from this release's assets (see rebuildXcframework).
-const ZCASH_SWIFT_SDK_VERSION = '2.5.1'
+const ZCASH_SWIFT_SDK_VERSION = '2.5.2'
+
+// SHA-256 of the libzcashlc.xcframework.zip release asset for the version
+// above. The download is verified against this pin before it is unpacked, so a
+// tampered or swapped upstream asset fails the build instead of injecting
+// attacker-controlled native code. Update this whenever the SDK version bumps:
+//   curl -fL https://github.com/zcash/zcash-swift-wallet-sdk/releases/download/<ver>/libzcashlc.xcframework.zip | shasum -a 256
+const LIBZCASHLC_XCFRAMEWORK_SHA256 =
+  '27089796e15eacd0e5a90e7ea01884ea5c40806cf25a6fa9a6aca933dad65813'
 
 function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/zcash/zcash-swift-wallet-sdk.git',
-    // 2.5.1:
-    '7d947516bf1e5348ec859719cfc1dbafd4d3135e'
+    // 2.5.2:
+    'e725a2482dced83afda91bcebe881bd0791aa359'
   )
   // libzcashlc is no longer a separate package as of SDK 2.5.x — it ships as a
   // binaryTarget zip on the SDK's GitHub release, downloaded in rebuildXcframework().
@@ -55,6 +64,18 @@ async function rebuildXcframework(): Promise<void> {
   const zipUrl = `https://github.com/zcash/zcash-swift-wallet-sdk/releases/download/${ZCASH_SWIFT_SDK_VERSION}/libzcashlc.xcframework.zip`
   const zipPath = join(tmp, 'libzcashlc.xcframework.zip')
   loudExec(tmp, ['curl', '--fail', '--location', '--output', zipPath, zipUrl])
+
+  // Verify the downloaded asset against the pinned SHA-256 before unpacking it,
+  // so a tampered/replaced upstream release can't inject native code into the build.
+  const actualSha256 = createHash('sha256')
+    .update(readFileSync(zipPath))
+    .digest('hex')
+  if (actualSha256 !== LIBZCASHLC_XCFRAMEWORK_SHA256) {
+    throw new Error(
+      `libzcashlc.xcframework.zip integrity check failed: expected ${LIBZCASHLC_XCFRAMEWORK_SHA256}, got ${actualSha256}`
+    )
+  }
+
   await disklet.delete('tmp/libzcashlc.xcframework')
   loudExec(tmp, ['unzip', '-q', '-o', zipPath])
 
