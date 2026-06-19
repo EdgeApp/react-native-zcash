@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.12.1 (2026-06-18)
+
+- changed: Updated checkpoints
+
 ## 0.12.0 (2026-06-13)
 
 - changed: Convert the build tooling from Yarn to npm.
