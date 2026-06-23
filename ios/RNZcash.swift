@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import MnemonicSwift
 import SwiftProtobuf
+import ZcashLightClientKit
 import os
 
 actor SynchronizerStore {

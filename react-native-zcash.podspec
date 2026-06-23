@@ -15,20 +15,16 @@ Pod::Spec.new do |s|
     :git => "https://github.com/EdgeApp/react-native-zcash.git",
     :tag => "v#{s.version}"
   }
+  # The Zcash SDK (ZcashLightClientKit) and its Rust FFI (libzcashlc), gRPC and
+  # SQLite are no longer vendored into this pod. They are consumed via Swift
+  # Package Manager (zcash-swift-wallet-sdk), added to the host app target. This
+  # pod ships only the React Native bridge, which imports ZcashLightClientKit
+  # from the SPM-provided module.
   s.source_files =
     "ios/react-native-zcash-Bridging-Header.h",
     "ios/RNZcash.m",
-    "ios/RNZcash.swift",
-    "ios/zcashlc.h",
-    "ios/ZCashLightClientKit/**/*.swift"
-  s.resource_bundles = {
-    "zcash-mainnet" => "ios/ZCashLightClientKit/Resources/checkpoints/mainnet/*.json",
-    "zcash-testnet" => "ios/ZCashLightClientKit/Resources/checkpoints/testnet/*.json"
-  }
-  s.vendored_frameworks = "ios/libzcashlc.xcframework"
+    "ios/RNZcash.swift"
 
   s.dependency "MnemonicSwift", "~> 2.2"
-  s.dependency "gRPC-Swift", "~> 1.8"
-  s.dependency "SQLite.swift/standalone", "~> 0.14"
   s.dependency "React-Core"
 end
