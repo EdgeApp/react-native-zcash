@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- changed: Consume the Zcash SDK (ZcashLightClientKit) via Swift Package Manager instead of vendoring its source and libzcashlc.xcframework into the pod. The host app adds the zcash-swift-wallet-sdk Swift Package; this package now ships only the React Native bridge, which imports ZcashLightClientKit from the SPM module. gRPC-Swift and SQLite.swift are no longer pod dependencies of this package.
+
 ## 0.12.1 (2026-06-18)
 
 - changed: Updated checkpoints
