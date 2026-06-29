@@ -9,6 +9,7 @@ import { deepList, justFiles, makeNodeDisklet, navigateDisklet } from 'disklet'
 import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 
+import { buildVendoredDeps } from './buildVendoredDeps'
 import { copyCheckpoints } from './copyCheckpoints'
 
 const disklet = makeNodeDisklet(join(__dirname, '../'))
@@ -20,6 +21,10 @@ async function main(): Promise<void> {
   await rebuildXcframework()
   await copySwift()
   await copyCheckpoints(disklet)
+  // grpc-swift (1.24+) and SwiftNIO are SwiftPM-only with no podspec, so the
+  // deps the vendored SDK source links against are pre-built into a static
+  // binary instead of being CocoaPods dependencies.
+  buildVendoredDeps()
 }
 
 // The Swift SDK version to vendor. The matching libzcashlc.xcframework is
