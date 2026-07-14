@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- changed: iOS - Vendor ECC's Ironwood (NU6.3) pre-release SDK branch (harry/ironwood-nu6.3-deps) for the July 28, 2026 network upgrade, building libzcashlc from the SDK's in-repo Rust source since no upstream NU6.3 release asset exists yet.
+- changed: Updated checkpoints
+
 ## 0.12.2 (2026-07-14)
 
 - changed: Updated checkpoints

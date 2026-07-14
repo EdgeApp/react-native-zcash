@@ -4,9 +4,8 @@
 // and install it into the correct locations.
 
 import { execFileSync } from 'child_process'
-import { createHash } from 'crypto'
 import { deepList, justFiles, makeNodeDisklet, navigateDisklet } from 'disklet'
-import { existsSync, mkdirSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 
 import { copyCheckpoints } from './copyCheckpoints'
@@ -17,93 +16,69 @@ const tmp = join(__dirname, '../tmp')
 async function main(): Promise<void> {
   if (!existsSync(tmp)) mkdirSync(tmp)
   await downloadSources()
-  await rebuildXcframework()
+  await buildXcframework()
   await copySwift()
   await copyCheckpoints(disklet)
 }
 
-// The Swift SDK version to vendor. The matching libzcashlc.xcframework is
-// downloaded from this release's assets (see rebuildXcframework).
-const ZCASH_SWIFT_SDK_VERSION = '2.5.2'
-
-// SHA-256 of the libzcashlc.xcframework.zip release asset for the version
-// above. The download is verified against this pin before it is unpacked, so a
-// tampered or swapped upstream asset fails the build instead of injecting
-// attacker-controlled native code. Update this whenever the SDK version bumps:
-//   curl -fL https://github.com/zcash/zcash-swift-wallet-sdk/releases/download/<ver>/libzcashlc.xcframework.zip | shasum -a 256
-const LIBZCASHLC_XCFRAMEWORK_SHA256 =
-  '27089796e15eacd0e5a90e7ea01884ea5c40806cf25a6fa9a6aca933dad65813'
+// The Swift SDK commit to vendor. This is ECC's Ironwood (NU6.3) integration
+// branch `harry/ironwood-nu6.3-deps`, which pins librustzcash's feat/ironwood
+// work for the July 28, 2026 network upgrade (block 3428143). No upstream
+// release ships NU6.3 yet (2.6.0-alpha.6 and Maven 2.5.2 are both NU6.2), so
+// the FFI is built from the SDK's in-repo Rust source instead of downloading
+// the prebuilt libzcashlc.xcframework release asset. Once ECC publishes an
+// NU6.3 release, repoint this at that tag and restore the prebuilt download
+// (see git history for the download-and-verify variant of this script).
+const ZCASH_SWIFT_SDK_COMMIT = '666819356aabfd18ebdf3c2368620d8107af4087'
 
 function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/zcash/zcash-swift-wallet-sdk.git',
-    // 2.5.2:
-    'e725a2482dced83afda91bcebe881bd0791aa359'
+    // harry/ironwood-nu6.3-deps:
+    ZCASH_SWIFT_SDK_COMMIT
   )
-  // libzcashlc is no longer a separate package as of SDK 2.5.x — it ships as a
-  // binaryTarget zip on the SDK's GitHub release, downloaded in rebuildXcframework().
+  // libzcashlc is not a separate package as of SDK 2.5.x. Upstream ships it as
+  // a binaryTarget zip on each release; this pre-release Ironwood pin has no
+  // release asset, so buildXcframework() compiles it from the SDK's rust/ tree.
 }
 
 /**
- * Downloads and re-packages the libzcashlc XCFramework.
+ * Builds the libzcashlc XCFramework from the SDK's in-repo Rust source.
  *
- * As of SDK 2.5.x the FFI ships as a release-asset zip on the Swift SDK repo
- * (no longer a separate zcash-light-client-ffi package).
+ * Upstream releases ship a prebuilt libzcashlc.xcframework.zip release asset,
+ * but the pinned Ironwood pre-release commit has no release, so we compile the
+ * staticlib with cargo for each Apple target and assemble the XCFramework
+ * ourselves. cbindgen (run by the crate's build.rs) generates the C header at
+ * target/Headers/zcashlc.h.
  *
- * An XCFramework can either include a static library (.a)
- * or a dynamically-linked library (.framework).
- * The published XCFramework stuffs a static library into a dynamic framework,
- * which doesn't work correctly.
- * We fix this by simply re-building the XCFramework.
+ * Note: the simulator slice is arm64-only (upstream's prebuilt is a universal
+ * arm64+x86_64 simulator binary). Add the x86_64-apple-ios target here if an
+ * Intel-mac simulator build is ever needed.
  */
-async function rebuildXcframework(): Promise<void> {
-  // Download the prebuilt libzcashlc XCFramework from the SDK's GitHub release.
-  // (The SDK's Package.swift `.binaryTarget` points at this same asset.)
-  console.log('Downloading libzcashlc XCFramework...')
-  const zipUrl = `https://github.com/zcash/zcash-swift-wallet-sdk/releases/download/${ZCASH_SWIFT_SDK_VERSION}/libzcashlc.xcframework.zip`
-  const zipPath = join(tmp, 'libzcashlc.xcframework.zip')
-  loudExec(tmp, ['curl', '--fail', '--location', '--output', zipPath, zipUrl])
+async function buildXcframework(): Promise<void> {
+  const sdkPath = join(tmp, 'ZcashLightClientKit')
+  const targets = ['aarch64-apple-ios', 'aarch64-apple-ios-sim']
 
-  // Verify the downloaded asset against the pinned SHA-256 before unpacking it,
-  // so a tampered/replaced upstream release can't inject native code into the build.
-  const actualSha256 = createHash('sha256')
-    .update(readFileSync(zipPath))
-    .digest('hex')
-  if (actualSha256 !== LIBZCASHLC_XCFRAMEWORK_SHA256) {
-    throw new Error(
-      `libzcashlc.xcframework.zip integrity check failed: expected ${LIBZCASHLC_XCFRAMEWORK_SHA256}, got ${actualSha256}`
-    )
+  // Match the app's minimum iOS version instead of the host SDK's default,
+  // so the linker doesn't warn about every object file:
+  process.env.IPHONEOS_DEPLOYMENT_TARGET = '15.0'
+
+  for (const target of targets) {
+    console.log(`Building libzcashlc for ${target}...`)
+    loudExec(sdkPath, ['rustup', 'target', 'add', target])
+    loudExec(sdkPath, ['cargo', 'build', '--release', '--target', target])
   }
-
-  await disklet.delete('tmp/libzcashlc.xcframework')
-  loudExec(tmp, ['unzip', '-q', '-o', zipPath])
 
   console.log('Creating XCFramework...')
   await disklet.delete('ios/libzcashlc.xcframework')
-
-  // Extract the static libraries:
-  await disklet.setData(
-    'tmp/lib/ios-simulator/libzcashlc.a',
-    await disklet.getData(
-      'tmp/libzcashlc.xcframework/ios-arm64_x86_64-simulator/libzcashlc.framework/libzcashlc'
-    )
-  )
-  await disklet.setData(
-    'tmp/lib/ios/libzcashlc.a',
-    await disklet.getData(
-      'tmp/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/libzcashlc'
-    )
-  )
-
-  // Build the XCFramework:
   loudExec(tmp, [
     'xcodebuild',
     '-create-xcframework',
     '-library',
-    join(__dirname, '../tmp/lib/ios-simulator/libzcashlc.a'),
+    join(sdkPath, 'target/aarch64-apple-ios-sim/release/libzcashlc.a'),
     '-library',
-    join(__dirname, '../tmp/lib/ios/libzcashlc.a'),
+    join(sdkPath, 'target/aarch64-apple-ios/release/libzcashlc.a'),
     '-output',
     join(__dirname, '../ios/libzcashlc.xcframework')
   ])
@@ -120,7 +95,16 @@ async function copySwift(): Promise<void> {
   )
   const toDisklet = navigateDisklet(disklet, 'ios')
   await toDisklet.delete('ZCashLightClientKit/')
-  const files = justFiles(await deepList(fromDisklet, 'ZCashLightClientKit/'))
+  const allFiles = justFiles(
+    await deepList(fromDisklet, 'ZCashLightClientKit/')
+  )
+
+  // The Ironwood pre-release branch defers the SDK's voting feature (its
+  // zcash_voting dependency does not resolve against the feat/ironwood
+  // librustzcash pins), so the FFI built above has no zcashlc_voting_*
+  // symbols. Exclude the self-contained voting backend Swift so nothing
+  // references them; react-native-zcash exposes no voting API.
+  const files = allFiles.filter(file => !file.includes('Rust/Voting/'))
 
   for (const file of files) {
     const text = await fromDisklet.getText(file)
@@ -178,12 +162,10 @@ async function copySwift(): Promise<void> {
     await toDisklet.setText(file, fixed)
   }
 
-  // Copy the Rust header into the Swift location:
+  // Copy the cbindgen-generated Rust header into the Swift location:
   await disklet.setText(
     'ios/zcashlc.h',
-    await disklet.getText(
-      'tmp/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/Headers/zcashlc.h'
-    )
+    await disklet.getText('tmp/ZcashLightClientKit/target/Headers/zcashlc.h')
   )
 }
 

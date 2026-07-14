@@ -49,6 +49,10 @@ dependencies {
 
   implementation 'androidx.appcompat:appcompat:1.6.1'
   implementation 'androidx.paging:paging-runtime-ktx:2.1.2'
+  // NOTE: iOS vendors ECC's Ironwood (NU6.3) pre-release branch (see
+  // scripts/updateSources.ts), but no NU6.3 zcash-android-sdk is published on
+  // Maven yet (2.5.2 is the latest, NU6.2). Bump these to the NU6.3 release
+  // when ECC publishes it, before the July 28, 2026 activation.
   implementation 'cash.z.ecc.android:zcash-android-sdk:2.5.2'
   implementation 'cash.z.ecc.android:zcash-android-sdk-incubator:2.5.2'
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
