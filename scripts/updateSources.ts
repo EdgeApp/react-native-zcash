@@ -29,7 +29,7 @@ async function main(): Promise<void> {
 
 // The Swift SDK version to vendor. The matching libzcashlc.xcframework is
 // downloaded from this release's assets (see rebuildXcframework).
-const ZCASH_SWIFT_SDK_VERSION = '2.5.2'
+const ZCASH_SWIFT_SDK_VERSION = '2.6.0-alpha.6'
 
 // SHA-256 of the libzcashlc.xcframework.zip release asset for the version
 // above. The download is verified against this pin before it is unpacked, so a
@@ -38,14 +38,14 @@ const ZCASH_SWIFT_SDK_VERSION = '2.5.2'
 //   curl -fL https://github.com/zcash/zcash-swift-wallet-sdk/releases/download/<ver>/libzcashlc.xcframework.zip | shasum -a 256
 // (matches the `checksum:` in the SDK tag's own Package.swift binaryTarget)
 const LIBZCASHLC_XCFRAMEWORK_SHA256 =
-  '27089796e15eacd0e5a90e7ea01884ea5c40806cf25a6fa9a6aca933dad65813'
+  'c58c1714440f8fd40bed33eefa3be325896e58eb568ed8747c05a27dae3a74b2'
 
 function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/zcash/zcash-swift-wallet-sdk.git',
-    // 2.5.2:
-    'e725a2482dced83afda91bcebe881bd0791aa359'
+    // 2.6.0-alpha.6:
+    '4303068e9282bb8b03bd94807b7d8ad268de75bf'
   )
   // libzcashlc is no longer a separate package as of SDK 2.5.x — it ships as a
   // binaryTarget zip on the SDK's GitHub release, downloaded in rebuildXcframework().
