@@ -22,27 +22,37 @@ async function main(): Promise<void> {
   await copyCheckpoints(disklet)
 }
 
-// The Swift SDK version to vendor. The matching libzcashlc.xcframework is
-// downloaded from this release's assets (see rebuildXcframework).
-const ZCASH_SWIFT_SDK_VERSION = '2.5.2'
+// The Swift SDK commit to vendor: the 2.7.0-rc.4 tag, the release the Zcash team
+// confirmed production-ready for Ironwood (NU6.3). Pinned by commit rather than
+// tag name so the checkout is immutable even if the tag is ever moved.
+const ZCASH_SWIFT_SDK_COMMIT = 'fb9f6cf46fa725efa6cb9e646e13a94f05a293bf'
 
-// SHA-256 of the libzcashlc.xcframework.zip release asset for the version
-// above. The download is verified against this pin before it is unpacked, so a
-// tampered or swapped upstream asset fails the build instead of injecting
-// attacker-controlled native code. Update this whenever the SDK version bumps:
-//   curl -fL https://github.com/zcash/zcash-swift-wallet-sdk/releases/download/<ver>/libzcashlc.xcframework.zip | shasum -a 256
+// SHA-256 of the libzcashlc.xcframework.zip this package links.
+//
+// The asset is not addressed by a URL written here: which zip to fetch, and its
+// checksum, come from the pinned checkout's own binaryTarget (readBinaryTarget
+// below), so the FFI can never drift from the SDK source we vendor. This
+// constant is the reviewed copy of that checksum - the build stops if the two
+// disagree, so bumping ZCASH_SWIFT_SDK_COMMIT has to change the native code
+// deliberately rather than silently. The download is checked against it too,
+// before anything is unpacked, so a tampered or swapped release asset fails the
+// build instead of injecting attacker-controlled native code.
+//
+// To refresh it, take the `checksum:` from the new commit's Package.swift, or:
+//   curl -fL <url> | shasum -a 256
 const LIBZCASHLC_XCFRAMEWORK_SHA256 =
-  '27089796e15eacd0e5a90e7ea01884ea5c40806cf25a6fa9a6aca933dad65813'
+  'c012c2b682191f027c1874ecde84adeeaef26dbb3e827dd5f29deb0eb8af0ef2'
 
 function downloadSources(): void {
   getRepo(
     'ZcashLightClientKit',
     'https://github.com/zcash/zcash-swift-wallet-sdk.git',
-    // 2.5.2:
-    'e725a2482dced83afda91bcebe881bd0791aa359'
+    ZCASH_SWIFT_SDK_COMMIT
   )
   // libzcashlc is no longer a separate package as of SDK 2.5.x — it ships as a
-  // binaryTarget zip on the SDK's GitHub release, downloaded in rebuildXcframework().
+  // release-asset zip named by the checkout's own binaryTarget, downloaded in
+  // rebuildXcframework(). Both read that one declaration, so SwiftPM builds of
+  // the checkout (the vendored-deps wrapper) link the binary this package ships.
 }
 
 /**
@@ -58,10 +68,19 @@ function downloadSources(): void {
  * We fix this by simply re-building the XCFramework.
  */
 async function rebuildXcframework(): Promise<void> {
+  // Take the asset to download from the pinned checkout itself, so the FFI is
+  // always the one this SDK source was released against:
+  const { url: zipUrl, checksum } = await readBinaryTarget()
+  if (checksum !== LIBZCASHLC_XCFRAMEWORK_SHA256) {
+    throw new Error(
+      `The pinned SDK checkout links libzcashlc ${checksum}, but this package pins ${LIBZCASHLC_XCFRAMEWORK_SHA256}. ` +
+        `Bumping ZCASH_SWIFT_SDK_COMMIT changes the native FFI too - review the new release (${zipUrl}) ` +
+        `and update LIBZCASHLC_XCFRAMEWORK_SHA256 to match.`
+    )
+  }
+
   // Download the prebuilt libzcashlc XCFramework from the SDK's GitHub release.
-  // (The SDK's Package.swift `.binaryTarget` points at this same asset.)
   console.log('Downloading libzcashlc XCFramework...')
-  const zipUrl = `https://github.com/zcash/zcash-swift-wallet-sdk/releases/download/${ZCASH_SWIFT_SDK_VERSION}/libzcashlc.xcframework.zip`
   const zipPath = join(tmp, 'libzcashlc.xcframework.zip')
   loudExec(tmp, ['curl', '--fail', '--location', '--output', zipPath, zipUrl])
 
@@ -107,6 +126,32 @@ async function rebuildXcframework(): Promise<void> {
     '-output',
     join(__dirname, '../ios/libzcashlc.xcframework')
   ])
+}
+
+interface BinaryTarget {
+  url: string
+  checksum: string
+}
+
+/**
+ * Reads the libzcashlc binaryTarget out of the pinned checkout's Package.swift,
+ * where upstream declares the FFI build that matches this SDK source. Reading it
+ * instead of repeating the release tag here is what makes a source/binary
+ * mismatch unrepresentable: there is only one place the pair is written down.
+ */
+async function readBinaryTarget(): Promise<BinaryTarget> {
+  const path = 'tmp/ZcashLightClientKit/Package.swift'
+  const text = await disklet.getText(path)
+  // The file declares exactly one binaryTarget, as a url/checksum pair. It sits
+  // in the else branch of upstream's local-FFI switch, so it is in the text
+  // whether or not a LocalPackages checkout happens to be active:
+  const match = text.match(
+    /\.binaryTarget\([^)]*?url:\s*"([^"]+)"[^)]*?checksum:\s*"([0-9a-f]{64})"/
+  )
+  if (match == null) {
+    throw new Error(`Cannot find the libzcashlc binaryTarget in ${path}`)
+  }
+  return { url: match[1], checksum: match[2] }
 }
 
 /**
@@ -166,6 +211,13 @@ async function copySwift(): Promise<void> {
       .replace(
         'Bundle.module.bundleURL.appendingPathComponent("checkpoints/testnet/")',
         'Bundle.main.url(forResource: "zcash-testnet", withExtension: "bundle")!'
+      )
+      // The regtest checkpoint directory does not exist as a resource (and
+      // RegtestCheckpointSource never reads it — it synthesizes an empty-tree
+      // checkpoint), so this only needs to compile under CocoaPods:
+      .replace(
+        'Bundle.module.bundleURL.appendingPathComponent("checkpoints/regtest/")',
+        'Bundle.main.bundleURL.appendingPathComponent("checkpoints/regtest/")'
       )
       // This block of code uses "Bundle.module" too,
       // but we can just delete it since phone builds don't need it:
