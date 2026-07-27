@@ -548,6 +548,51 @@ class RNZcashModule(
     }
 
     //
+    // region Orchard -> Ironwood migration (NU6.3) — v1 surface
+    //
+    // Signatures mirror the iOS bridge exactly, because the JS API is the
+    // cross-platform contract. The SDK-backed work lives in IronwoodMigration.kt
+    // and src/ironwood — see those for why it is bound at runtime rather than
+    // called directly, and for which parts the Android SDK cannot serve yet.
+
+    @ReactMethod
+    fun ironwoodActivationHeight(
+        networkName: String,
+        promise: Promise,
+    ) {
+        promise.wrap {
+            // An unrecognized network answers null, matching iOS and the
+            // `number | null` JS contract. Defaulting to mainnet (as the
+            // derivation methods in this file do) would report a height that is
+            // wrong for the caller's network rather than admitting it has none.
+            networks[networkName]?.let {
+                IronwoodMigration.ironwoodActivationHeight(it)?.toInt()
+            }
+        }
+    }
+
+    @ReactMethod
+    fun proposeOrchardToIronwoodMigration(
+        alias: String,
+        promise: Promise,
+    ) {
+        // Synchronizer-bound work belongs on the wallet's own scope, like every
+        // other wallet method here: moduleScope outlives the synchronizer, so a
+        // proposal could still be running against one that `stop` has closed.
+        val wallet = getWallet(alias)
+        wallet.coroutineScope.launch {
+            try {
+                promise.resolve(
+                    IronwoodMigration.proposeOrchardToIronwoodMigration(wallet),
+                )
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
+        }
+    }
+
+    // endregion
+
     // Utilities
     //
 

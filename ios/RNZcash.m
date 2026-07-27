@@ -83,6 +83,16 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
+// Orchard -> Ironwood migration (NU6.3)
+RCT_EXTERN_METHOD(proposeOrchardToIronwoodMigration:(NSString *)alias
+  resolver:(RCTPromiseResolveBlock)resolve
+  rejecter:(RCTPromiseRejectBlock)reject
+)
+RCT_EXTERN_METHOD(ironwoodActivationHeight:(NSString *)networkName
+  resolver:(RCTPromiseResolveBlock)resolve
+  rejecter:(RCTPromiseRejectBlock)reject
+)
+
 // Events
 RCT_EXTERN_METHOD(supportedEvents)
 
