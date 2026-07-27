@@ -693,6 +693,11 @@ class WalletSynchronizer: NSObject {
     let orchardAvailableZatoshi = orchardBalance.spendableValue
     let orchardTotalZatoshi = orchardBalance.total()
 
+    // Zero until the Ironwood (NU6.3) pool activates:
+    let ironwoodBalance = accountBalance.ironwoodBalance
+    let ironwoodAvailableZatoshi = ironwoodBalance.spendableValue
+    let ironwoodTotalZatoshi = ironwoodBalance.total()
+
     return [
       "alias": self.alias,
       "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
@@ -701,6 +706,8 @@ class WalletSynchronizer: NSObject {
       "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
       "orchardAvailableZatoshi": String(orchardAvailableZatoshi.amount),
       "orchardTotalZatoshi": String(orchardTotalZatoshi.amount),
+      "ironwoodAvailableZatoshi": String(ironwoodAvailableZatoshi.amount),
+      "ironwoodTotalZatoshi": String(ironwoodTotalZatoshi.amount),
     ] as NSDictionary
   }
 

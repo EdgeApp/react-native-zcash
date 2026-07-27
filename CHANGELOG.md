@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- added: `ironwoodAvailableZatoshi` / `ironwoodTotalZatoshi` on `BalanceEvent`, on both platforms (zero until NU6.3 activates); the deprecated summed fields now include the ironwood pool.
 - changed: Pinned the Swift SDK to 2.7.0-rc.4, the release the Zcash team confirmed production-ready for Ironwood (NU6.3). `update-sources` no longer builds the FFI's download URL from a version string - it takes the url and checksum from the `binaryTarget` the pinned checkout itself declares, so the FFI can never drift from the SDK source it was released against.
 - changed: Bumped zcash-android-sdk (and the incubator) from 2.5.2 to 2.7.0-rc.4. It ships Kotlin 2.3 metadata, which the app already provides.
 - fixed: Checkpoint generation now carries the Ironwood commitment tree. `TreeState.ironwoodTree` (field 7) was missing from the bundled lightwalletd proto, so `update-checkpoints` would have silently dropped it and produced post-NU6.3 checkpoints with no Ironwood tree state — the same defect a post-NU5 checkpoint missing `orchardTree` has. Pre-activation output is unchanged (the field comes back empty and is stripped, exactly like `orchardTree` before NU5), so existing checkpoints need no regeneration.

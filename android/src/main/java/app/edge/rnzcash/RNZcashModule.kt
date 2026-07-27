@@ -177,6 +177,10 @@ class RNZcashModule(
                     val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
                     val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
 
+                    val ironwoodBalances = accountBalance?.ironwood
+                    val ironwoodAvailableZatoshi = ironwoodBalances?.available ?: Zatoshi(0L)
+                    val ironwoodTotalZatoshi = ironwoodBalances?.total ?: Zatoshi(0L)
+
                     sendEvent("BalanceEvent") { args ->
                         args.putString("alias", alias)
                         args.putString("transparentAvailableZatoshi", transparentAvailableZatoshi.value.toString())
@@ -185,6 +189,8 @@ class RNZcashModule(
                         args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
                         args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
                         args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
+                        args.putString("ironwoodAvailableZatoshi", ironwoodAvailableZatoshi.value.toString())
+                        args.putString("ironwoodTotalZatoshi", ironwoodTotalZatoshi.value.toString())
                     }
                 }
 
