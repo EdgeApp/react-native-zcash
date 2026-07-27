@@ -8,6 +8,7 @@ import {
 import {
   Addresses,
   CreateTransferOpts,
+  ImmediateMigrationProposal,
   InitializerConfig,
   Network,
   ProposalSuccess,
@@ -39,6 +40,19 @@ export const Tools = {
     network: Network = 'mainnet'
   ): Promise<boolean> => {
     const result = await RNZcash.isValidAddress(address, network)
+    return result
+  },
+  /**
+   * The NU6.3 (Ironwood) activation height for the network, or null when the
+   * network has none. Stateless — safe to call before any synchronizer
+   * exists; the app gates migration UI on the chain reaching this height.
+   * Answers on both platforms: these are consensus constants (ZIP 258), which
+   * neither SDK exposes.
+   */
+  getIronwoodActivationHeight: async (
+    network: Network = 'mainnet'
+  ): Promise<number | null> => {
+    const result = await RNZcash.ironwoodActivationHeight(network)
     return result
   }
 }
@@ -86,6 +100,17 @@ export class Synchronizer {
 
   async rescan(): Promise<void> {
     await RNZcash.rescan(this.alias)
+  }
+
+  /**
+   * Proposes the Orchard-only sweep to the wallet's own address. Execute the
+   * returned proposal through the ordinary createTransfer path.
+   */
+  async proposeOrchardToIronwoodMigration(): Promise<
+    ImmediateMigrationProposal
+  > {
+    const result = await RNZcash.proposeOrchardToIronwoodMigration(this.alias)
+    return result
   }
 
   async proposeTransfer(opts: ProposeTransferOpts): Promise<ProposalSuccess> {
