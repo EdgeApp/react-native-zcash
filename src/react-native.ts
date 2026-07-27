@@ -139,22 +139,37 @@ export class Synchronizer {
     onError
   }: SynchronizerCallbacks): void {
     this.setListener('BalanceEvent', event => {
+      // Both platforms emit these, but an older native build paired with a
+      // newer JS bundle would not; default them so the shape is consistent:
+      event.ironwoodAvailableZatoshi = event.ironwoodAvailableZatoshi ?? '0'
+      event.ironwoodTotalZatoshi = event.ironwoodTotalZatoshi ?? '0'
+
       const {
         transparentAvailableZatoshi,
         transparentTotalZatoshi,
         saplingAvailableZatoshi,
         saplingTotalZatoshi,
         orchardAvailableZatoshi,
-        orchardTotalZatoshi
+        orchardTotalZatoshi,
+        ironwoodAvailableZatoshi,
+        ironwoodTotalZatoshi
       } = event
 
+      // The deprecated sums mean "the whole wallet": ironwood must be
+      // included so funds don't vanish from them mid-migration.
       event.availableZatoshi = add(
-        add(transparentAvailableZatoshi, saplingAvailableZatoshi),
-        orchardAvailableZatoshi
+        add(
+          add(transparentAvailableZatoshi, saplingAvailableZatoshi),
+          orchardAvailableZatoshi
+        ),
+        ironwoodAvailableZatoshi
       )
       event.totalZatoshi = add(
-        add(transparentTotalZatoshi, saplingTotalZatoshi),
-        orchardTotalZatoshi
+        add(
+          add(transparentTotalZatoshi, saplingTotalZatoshi),
+          orchardTotalZatoshi
+        ),
+        ironwoodTotalZatoshi
       )
       onBalanceChanged(event)
     })

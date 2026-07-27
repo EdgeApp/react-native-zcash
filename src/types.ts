@@ -50,8 +50,11 @@ export interface BalanceEvent {
   saplingTotalZatoshi: string
   orchardAvailableZatoshi: string
   orchardTotalZatoshi: string
+  /** Zero until the Ironwood (NU6.3) pool activates. Zero on Android until its SDK ships Ironwood. */
+  ironwoodAvailableZatoshi: string
+  ironwoodTotalZatoshi: string
 
-  /** @deprecated */
+  /** @deprecated Sum of every pool, including ironwood */
   availableZatoshi: string
   totalZatoshi: string
 }
