@@ -65,6 +65,11 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
+RCT_EXTERN_METHOD(emitExistingTransactions:(NSString *)alias
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
+
 // Derivation tool
 RCT_EXTERN_METHOD(deriveViewingKey:(NSString *)seed
 :(NSString *)network
