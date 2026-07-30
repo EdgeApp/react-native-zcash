@@ -147,14 +147,16 @@ class RNZcashModule(
                             return@launch
                         }
 
+                        // Parse in parallel, but fill the array on one thread:
+                        // WritableArray is not safe for concurrent mutation, and
+                        // these coroutines run on a multi-threaded dispatcher.
+                        // Pushing in order also keeps the emitted order stable.
+                        val parsedTxs =
+                            transactionsToEmit
+                                .map { tx -> async { parseTx(wallet, tx) } }
+                                .map { it.await() }
                         val nativeArray = Arguments.createArray()
-                        transactionsToEmit
-                            .map { tx ->
-                                launch {
-                                    val parsedTx = parseTx(wallet, tx)
-                                    nativeArray.pushMap(parsedTx)
-                                }
-                            }.forEach { it.join() }
+                        parsedTxs.forEach { nativeArray.pushMap(it) }
 
                         sendEvent("TransactionEvent") { args ->
                             args.putString("alias", alias)
@@ -554,6 +556,62 @@ class RNZcashModule(
     // cross-platform contract. The SDK-backed work lives in IronwoodMigration.kt
     // and src/ironwood — see those for why it is bound at runtime rather than
     // called directly, and for which parts the Android SDK cannot serve yet.
+
+    /**
+     * Emits the wallet's current transaction set as a `TransactionEvent`.
+     *
+     * The `allTransactions` collector above delivers the full list on its first
+     * emission, but that fires while `initialize` is still settling — before
+     * JavaScript has attached its listeners — so the delivery is a race the app
+     * can lose. Afterwards the collector only re-emits transactions whose mined
+     * height or state changed, so anything that settled while nothing was
+     * listening would never reach the app again.
+     *
+     * JavaScript calls this from `subscribe()`, once its listeners are attached,
+     * which is the only point at which delivery is guaranteed. Re-sending known
+     * transactions is harmless: the app updates only the ones that changed.
+     */
+    @ReactMethod
+    fun emitExistingTransactions(
+        alias: String,
+        promise: Promise,
+    ) {
+        val wallet = getWallet(alias)
+        wallet.coroutineScope.launch {
+            try {
+                val txList = wallet.allTransactions.first()
+                // Parse in parallel, but fill the array on one thread: see the
+                // collector above - WritableArray is not safe for concurrent
+                // mutation and these run on a multi-threaded dispatcher.
+                val parsedTxs =
+                    txList
+                        .map { tx -> async { parseTx(wallet, tx) } }
+                        .map { it.await() }
+                val nativeArray = Arguments.createArray()
+                parsedTxs.forEach { nativeArray.pushMap(it) }
+
+                sendEvent("TransactionEvent") { args ->
+                    args.putString("alias", alias)
+                    args.putArray("transactions", nativeArray)
+                }
+
+                // Record what we just sent, so the allTransactions collector does
+                // not treat these as unseen and emit the identical set a second
+                // time - which would parse every transaction twice on each login.
+                val emittedForAlias = emittedTransactions.getOrPut(alias) { mutableMapOf() }
+                txList.forEach { tx ->
+                    emittedForAlias[tx.txId.txIdString()] =
+                        EmittedTxState(
+                            minedHeight = tx.minedHeight,
+                            transactionState = tx.transactionState,
+                        )
+                }
+                promise.resolve(null)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
+        }
+    }
 
     @ReactMethod
     fun ironwoodActivationHeight(
