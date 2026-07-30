@@ -202,6 +202,20 @@ export class Synchronizer {
     this.setListener('TransactionEvent', onTransactionsChanged)
     this.setListener('UpdateEvent', onUpdate)
     this.setListener('ErrorEvent', onError)
+
+    // Native drops events until a listener exists, and its transaction stream
+    // only carries what is newly found or newly mined. A transaction that
+    // settled while nothing was listening - mined while the app was closed, or
+    // during a failed sync - would otherwise never be reported again and would
+    // stay pending forever. Ask for the current set now that the listeners
+    // above are attached; this ordering is what makes the delivery reliable.
+    RNZcash.emitExistingTransactions(this.alias).catch((error: unknown) => {
+      onError({
+        alias: this.alias,
+        level: 'error',
+        message: `emitExistingTransactions failed: ${String(error)}`
+      })
+    })
   }
 
   private setListener<T>(

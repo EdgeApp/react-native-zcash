@@ -400,6 +400,41 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
+  /// Emits the wallet's current transaction set as a `TransactionEvent`.
+  ///
+  /// The synchronizer's event stream only carries transactions found in newly
+  /// scanned blocks (`foundTransactions`) or ones that just became mined
+  /// (`minedTransaction`), and `sendToJs` drops every event until JavaScript
+  /// attaches a listener. A transaction whose state settled while nothing was
+  /// listening — mined while the app was closed, or during a failed sync — is
+  /// therefore neither newly found nor newly mined on the next launch, and
+  /// would never reach the app: it would sit at height 0, "pending", forever.
+  ///
+  /// JavaScript calls this from `subscribe()`, after its listeners are
+  /// attached, which is the only point at which delivery is guaranteed.
+  /// Re-sending transactions the app already knows is harmless: it updates
+  /// only the ones whose height or amount actually changed.
+  @objc func emitExistingTransactions(
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = await synchronizerStore.get(alias) {
+        do {
+          let txs = try await wallet.synchronizer.allTransactions()
+          await wallet.sendTxs(transactions: txs)
+          resolve(nil)
+        } catch {
+          reject(
+            "emitExistingTransactionsError", "Failed to read transactions", error)
+        }
+      } else {
+        reject(
+          "emitExistingTransactionsError", "Wallet does not exist", genericError)
+      }
+    }
+  }
+
   @objc func rescan(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
@@ -872,17 +907,27 @@ class WalletSynchronizer: NSObject {
     return confTx
   }
 
+  /// Fire-and-forget: for the synchronizer's own event stream, where nothing is
+  /// waiting on the result.
   func emitTxs(transactions: [ZcashTransaction.Overview]) {
     Task {
-      var out: [NSDictionary] = []
-      for tx in transactions {
-        let confTx = await parseTx(tx: tx)
-        out.append(confTx.nsDictionary)
-      }
-
-      let data: NSDictionary = ["alias": self.alias, "transactions": NSArray(array: out)]
-      emit("TransactionEvent", data)
+      await sendTxs(transactions: transactions)
     }
+  }
+
+  /// The awaited form. `emitExistingTransactions` resolves its promise only
+  /// after this returns, so JavaScript's completion actually means the event
+  /// was sent - resolving off the detached Task above would report success
+  /// before any parsing had happened, and hide a failure inside it.
+  func sendTxs(transactions: [ZcashTransaction.Overview]) async {
+    var out: [NSDictionary] = []
+    for tx in transactions {
+      let confTx = await parseTx(tx: tx)
+      out.append(confTx.nsDictionary)
+    }
+
+    let data: NSDictionary = ["alias": self.alias, "transactions": NSArray(array: out)]
+    emit("TransactionEvent", data)
   }
 }
 
