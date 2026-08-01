@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- added: `ironwoodAvailableZatoshi` / `ironwoodTotalZatoshi` on `BalanceEvent`, on both platforms (zero until NU6.3 activates); the deprecated summed fields now include the ironwood pool.
+- added: Orchard -> Ironwood (NU6.3) migration surface, identical on both platforms. `Synchronizer.proposeOrchardToIronwoodMigration` builds the sweep: the SDK spends every Orchard note to the wallet's own address with the fee chosen so no Orchard change remains, leaving Sapling and transparent funds untouched, and the app broadcasts it through the ordinary `createTransfer` pipeline. `Tools.getIronwoodActivationHeight` answers from consensus constants (ZIP 258), which neither SDK exposes. There is no migration state to poll: whether to offer the sweep follows from the activation height, the wallet being synced, and the Orchard balance, and broadcasting it spends those notes.
+- changed: Pinned the Swift SDK to 2.7.0-rc.4, the release confirmed production-ready for Ironwood (NU6.3), and dropped the Edge-hosted one-time FFI build it replaces - the release ships its own `libzcashlc.xcframework.zip`, which `update-sources` now downloads and verifies against the checksum the SDK's own `Package.swift` declares.
+- changed: Bumped zcash-android-sdk (and the incubator) from 2.5.2 to 2.7.0-rc.4. It ships Kotlin 2.3 metadata, which the app already provides.
+- fixed: A transaction that settled while nothing was listening is reported again on the next `subscribe`. The native event stream only carries transactions that are newly found or newly mined, and native drops events entirely until JavaScript attaches a listener, so a transaction mined while the app was closed - or during a failed sync - was neither on the next launch and was never reported again: it stayed at height 0, "pending", forever. `Synchronizer.subscribe` now asks native for the current transaction set once its listeners are attached, which is the only point at which delivery is guaranteed. Re-sending known transactions is harmless, since only those whose height or amount changed are updated.
+- fixed: Checkpoint generation now carries the Ironwood commitment tree. `TreeState.ironwoodTree` (field 7) was missing from the bundled lightwalletd proto, so `update-checkpoints` would have silently dropped it and produced post-NU6.3 checkpoints with no Ironwood tree state — the same defect a post-NU5 checkpoint missing `orchardTree` has. Pre-activation output is unchanged (the field comes back empty and is stripped, exactly like `orchardTree` before NU5), so existing checkpoints need no regeneration.
+
 ## 0.13.0 (2026-07-31)
 
 ## 0.12.2 (2026-07-14)

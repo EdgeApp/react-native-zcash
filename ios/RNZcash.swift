@@ -400,6 +400,41 @@ class RNZcash: RCTEventEmitter {
     }
   }
 
+  /// Emits the wallet's current transaction set as a `TransactionEvent`.
+  ///
+  /// The synchronizer's event stream only carries transactions found in newly
+  /// scanned blocks (`foundTransactions`) or ones that just became mined
+  /// (`minedTransaction`), and `sendToJs` drops every event until JavaScript
+  /// attaches a listener. A transaction whose state settled while nothing was
+  /// listening — mined while the app was closed, or during a failed sync — is
+  /// therefore neither newly found nor newly mined on the next launch, and
+  /// would never reach the app: it would sit at height 0, "pending", forever.
+  ///
+  /// JavaScript calls this from `subscribe()`, after its listeners are
+  /// attached, which is the only point at which delivery is guaranteed.
+  /// Re-sending transactions the app already knows is harmless: it updates
+  /// only the ones whose height or amount actually changed.
+  @objc func emitExistingTransactions(
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    Task {
+      if let wallet = await synchronizerStore.get(alias) {
+        do {
+          let txs = try await wallet.synchronizer.allTransactions()
+          await wallet.sendTxs(transactions: txs)
+          resolve(nil)
+        } catch {
+          reject(
+            "emitExistingTransactionsError", "Failed to read transactions", error)
+        }
+      } else {
+        reject(
+          "emitExistingTransactionsError", "Wallet does not exist", genericError)
+      }
+    }
+  }
+
   @objc func rescan(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
@@ -440,6 +475,113 @@ class RNZcash: RCTEventEmitter {
       }
     }
   }
+
+  // MARK: Orchard -> Ironwood migration (NU6.3)
+  //
+  // The sweep is one ordinary proposal the app broadcasts through the normal
+  // createTransfer pipeline. The SDK spends every Orchard note to the account's
+  // own internal receiver with the fee chosen so no Orchard change remains,
+  // leaving Sapling and transparent funds untouched, and is deliberately
+  // all-or-nothing: post-NU6.3 the turnstile forbids adding value back to
+  // Orchard, so a remainder would be stranded in a pool the wallet is leaving.
+  //
+  // Errors reject with the ZcashError message rather than a generic error.
+
+  private func withMigrationAccount(
+    _ methodName: String,
+    _ alias: String,
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    _ reject: @escaping RCTPromiseRejectBlock,
+    _ body: @escaping (WalletSynchronizer, AccountUUID) async throws -> Any?
+  ) {
+    Task {
+      guard let wallet = await synchronizerStore.get(alias) else {
+        reject(methodName, "Wallet does not exist", genericError)
+        return
+      }
+      guard let accountUUID = wallet.accountUUID else {
+        reject(methodName, "Account UUID not found", genericError)
+        return
+      }
+      do {
+        let result = try await body(wallet, accountUUID)
+        resolve(result)
+      } catch let error as ZcashError {
+        reject(methodName, error.message, error)
+      } catch {
+        reject(methodName, error.localizedDescription, error)
+      }
+    }
+  }
+
+  /// Proposes the Orchard-only sweep to the account's own address, resolving
+  /// the JS `ImmediateMigrationProposal`. Execute the returned proposal through
+  /// the ordinary `createTransfer` path.
+  @objc func proposeOrchardToIronwoodMigration(
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    withMigrationAccount("proposeOrchardToIronwoodMigration", alias, resolve, reject) {
+      wallet, accountUUID in
+      let proposal = try await wallet.synchronizer.proposeOrchardToIronwoodMigration(
+        accountUUID: accountUUID)
+      let feeZatoshi = proposal.totalFeeRequired().amount
+
+      // The proposal reports its fee but not its payment value, so the amount
+      // crossing is derived from what it consumes: the whole spendable Orchard
+      // balance, minus that fee. Fail rather than quote a figure we cannot
+      // source — it is displayed and then locked into the send scene.
+      let balances = try await wallet.synchronizer.getAccountsBalances()
+      guard let orchardAvailable = balances[accountUUID]?.orchardBalance.spendableValue.amount
+      else {
+        throw NSError(
+          domain: "proposeOrchardToIronwoodMigration", code: -1,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "Balances are not available yet; cannot quote the migration amount"
+          ])
+      }
+
+      // The SDK built a fundable proposal, so a non-positive remainder means the
+      // balance we read disagrees with the notes the proposal selected — stale
+      // balances, or a differing notion of "spendable". Clamping that to zero
+      // would quote a zero-amount migration against a real fee, and the app
+      // locks this figure into the send scene. Fail loudly instead.
+      let amountZatoshi = orchardAvailable - feeZatoshi
+      guard amountZatoshi > 0 else {
+        throw NSError(
+          domain: "proposeOrchardToIronwoodMigration", code: -1,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "Orchard balance (\(orchardAvailable)) does not cover the migration fee (\(feeZatoshi))"
+          ])
+      }
+
+      return [
+        "amountZatoshi": String(amountZatoshi),
+        "feeZatoshi": String(feeZatoshi),
+        "proposalBase64": try proposal.inner.serializedData().base64EncodedString(),
+      ] as NSDictionary
+    }
+  }
+
+  /// The NU6.3 activation height for the named network, or null when it has
+  /// none. Served from consensus constants (ZIP 258) because no SDK exposes an
+  /// Ironwood accessor; stateless, so it needs no synchronizer.
+  @objc func ironwoodActivationHeight(
+    _ networkName: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    switch networkName {
+    case "mainnet":
+      resolve(3_428_143)
+    case "testnet":
+      resolve(4_134_000)
+    default:
+      resolve(nil)
+    }
+  }
+
 
   // Derivation Tool
   private func getDerivationToolForNetwork(_ network: String) -> DerivationTool {
@@ -693,6 +835,11 @@ class WalletSynchronizer: NSObject {
     let orchardAvailableZatoshi = orchardBalance.spendableValue
     let orchardTotalZatoshi = orchardBalance.total()
 
+    // Zero until the Ironwood (NU6.3) pool activates:
+    let ironwoodBalance = accountBalance.ironwoodBalance
+    let ironwoodAvailableZatoshi = ironwoodBalance.spendableValue
+    let ironwoodTotalZatoshi = ironwoodBalance.total()
+
     return [
       "alias": self.alias,
       "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
@@ -701,6 +848,8 @@ class WalletSynchronizer: NSObject {
       "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
       "orchardAvailableZatoshi": String(orchardAvailableZatoshi.amount),
       "orchardTotalZatoshi": String(orchardTotalZatoshi.amount),
+      "ironwoodAvailableZatoshi": String(ironwoodAvailableZatoshi.amount),
+      "ironwoodTotalZatoshi": String(ironwoodTotalZatoshi.amount),
     ] as NSDictionary
   }
 
@@ -758,17 +907,27 @@ class WalletSynchronizer: NSObject {
     return confTx
   }
 
+  /// Fire-and-forget: for the synchronizer's own event stream, where nothing is
+  /// waiting on the result.
   func emitTxs(transactions: [ZcashTransaction.Overview]) {
     Task {
-      var out: [NSDictionary] = []
-      for tx in transactions {
-        let confTx = await parseTx(tx: tx)
-        out.append(confTx.nsDictionary)
-      }
-
-      let data: NSDictionary = ["alias": self.alias, "transactions": NSArray(array: out)]
-      emit("TransactionEvent", data)
+      await sendTxs(transactions: transactions)
     }
+  }
+
+  /// The awaited form. `emitExistingTransactions` resolves its promise only
+  /// after this returns, so JavaScript's completion actually means the event
+  /// was sent - resolving off the detached Task above would report success
+  /// before any parsing had happened, and hide a failure inside it.
+  func sendTxs(transactions: [ZcashTransaction.Overview]) async {
+    var out: [NSDictionary] = []
+    for tx in transactions {
+      let confTx = await parseTx(tx: tx)
+      out.append(confTx.nsDictionary)
+    }
+
+    let data: NSDictionary = ["alias": self.alias, "transactions": NSArray(array: out)]
+    emit("TransactionEvent", data)
   }
 }
 
