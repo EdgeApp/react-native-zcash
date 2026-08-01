@@ -8,6 +8,7 @@ import {
 import {
   Addresses,
   CreateTransferOpts,
+  ImmediateMigrationProposal,
   InitializerConfig,
   Network,
   ProposalSuccess,
@@ -39,6 +40,19 @@ export const Tools = {
     network: Network = 'mainnet'
   ): Promise<boolean> => {
     const result = await RNZcash.isValidAddress(address, network)
+    return result
+  },
+  /**
+   * The NU6.3 (Ironwood) activation height for the network, or null when the
+   * network has none. Stateless — safe to call before any synchronizer
+   * exists; the app gates migration UI on the chain reaching this height.
+   * Answers on both platforms: these are consensus constants (ZIP 258), which
+   * neither SDK exposes.
+   */
+  getIronwoodActivationHeight: async (
+    network: Network = 'mainnet'
+  ): Promise<number | null> => {
+    const result = await RNZcash.ironwoodActivationHeight(network)
     return result
   }
 }
@@ -86,6 +100,17 @@ export class Synchronizer {
 
   async rescan(): Promise<void> {
     await RNZcash.rescan(this.alias)
+  }
+
+  /**
+   * Proposes the Orchard-only sweep to the wallet's own address. Execute the
+   * returned proposal through the ordinary createTransfer path.
+   */
+  async proposeOrchardToIronwoodMigration(): Promise<
+    ImmediateMigrationProposal
+  > {
+    const result = await RNZcash.proposeOrchardToIronwoodMigration(this.alias)
+    return result
   }
 
   async proposeTransfer(opts: ProposeTransferOpts): Promise<ProposalSuccess> {
@@ -139,22 +164,37 @@ export class Synchronizer {
     onError
   }: SynchronizerCallbacks): void {
     this.setListener('BalanceEvent', event => {
+      // Both platforms emit these, but an older native build paired with a
+      // newer JS bundle would not; default them so the shape is consistent:
+      event.ironwoodAvailableZatoshi = event.ironwoodAvailableZatoshi ?? '0'
+      event.ironwoodTotalZatoshi = event.ironwoodTotalZatoshi ?? '0'
+
       const {
         transparentAvailableZatoshi,
         transparentTotalZatoshi,
         saplingAvailableZatoshi,
         saplingTotalZatoshi,
         orchardAvailableZatoshi,
-        orchardTotalZatoshi
+        orchardTotalZatoshi,
+        ironwoodAvailableZatoshi,
+        ironwoodTotalZatoshi
       } = event
 
+      // The deprecated sums mean "the whole wallet": ironwood must be
+      // included so funds don't vanish from them mid-migration.
       event.availableZatoshi = add(
-        add(transparentAvailableZatoshi, saplingAvailableZatoshi),
-        orchardAvailableZatoshi
+        add(
+          add(transparentAvailableZatoshi, saplingAvailableZatoshi),
+          orchardAvailableZatoshi
+        ),
+        ironwoodAvailableZatoshi
       )
       event.totalZatoshi = add(
-        add(transparentTotalZatoshi, saplingTotalZatoshi),
-        orchardTotalZatoshi
+        add(
+          add(transparentTotalZatoshi, saplingTotalZatoshi),
+          orchardTotalZatoshi
+        ),
+        ironwoodTotalZatoshi
       )
       onBalanceChanged(event)
     })
@@ -162,6 +202,20 @@ export class Synchronizer {
     this.setListener('TransactionEvent', onTransactionsChanged)
     this.setListener('UpdateEvent', onUpdate)
     this.setListener('ErrorEvent', onError)
+
+    // Native drops events until a listener exists, and its transaction stream
+    // only carries what is newly found or newly mined. A transaction that
+    // settled while nothing was listening - mined while the app was closed, or
+    // during a failed sync - would otherwise never be reported again and would
+    // stay pending forever. Ask for the current set now that the listeners
+    // above are attached; this ordering is what makes the delivery reliable.
+    RNZcash.emitExistingTransactions(this.alias).catch((error: unknown) => {
+      onError({
+        alias: this.alias,
+        level: 'error',
+        message: `emitExistingTransactions failed: ${String(error)}`
+      })
+    })
   }
 
   private setListener<T>(

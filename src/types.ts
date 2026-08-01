@@ -50,8 +50,11 @@ export interface BalanceEvent {
   saplingTotalZatoshi: string
   orchardAvailableZatoshi: string
   orchardTotalZatoshi: string
+  /** Zero until the Ironwood (NU6.3) pool activates. */
+  ironwoodAvailableZatoshi: string
+  ironwoodTotalZatoshi: string
 
-  /** @deprecated */
+  /** @deprecated Sum of every pool, including ironwood */
   availableZatoshi: string
   totalZatoshi: string
 }
@@ -114,4 +117,31 @@ export interface Addresses {
   unifiedAddress: string
   saplingAddress: string
   transparentAddress: string
+}
+
+//
+// Orchard -> Ironwood migration (NU6.3).
+//
+// The sweep is one ordinary proposal the app broadcasts through the normal
+// createTransfer pipeline, so there is no migration lifecycle to model here:
+// the app decides whether to offer it from the Orchard balance and the
+// activation height, and a broadcast sweep empties that balance.
+//
+
+/**
+ * The Orchard-only sweep: spends every Orchard note to the wallet's own
+ * address, with the fee chosen so no Orchard change remains. Sapling and
+ * transparent funds are untouched, and it is all-or-nothing — post-NU6.3 the
+ * turnstile forbids adding value back to Orchard, so a remainder would be
+ * stranded.
+ */
+export interface ImmediateMigrationProposal {
+  /**
+   * Net amount crossing into Ironwood: the spendable Orchard balance minus
+   * `feeZatoshi`. It deliberately excludes the wallet's other pools.
+   */
+  amountZatoshi: string
+  feeZatoshi: string
+  /** Opaque ordinary-transfer proposal; execute it via createTransfer. */
+  proposalBase64: string
 }
