@@ -11,6 +11,8 @@
 
 ## 0.13.0 (2026-07-31)
 
+- changed: Updated checkpoints
+
 ## 0.12.2 (2026-07-14)
 
 - changed: Updated checkpoints
