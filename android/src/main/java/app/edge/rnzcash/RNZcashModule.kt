@@ -147,14 +147,16 @@ class RNZcashModule(
                             return@launch
                         }
 
+                        // Parse in parallel, but fill the array on one thread:
+                        // WritableArray is not safe for concurrent mutation, and
+                        // these coroutines run on a multi-threaded dispatcher.
+                        // Pushing in order also keeps the emitted order stable.
+                        val parsedTxs =
+                            transactionsToEmit
+                                .map { tx -> async { parseTx(wallet, tx) } }
+                                .map { it.await() }
                         val nativeArray = Arguments.createArray()
-                        transactionsToEmit
-                            .map { tx ->
-                                launch {
-                                    val parsedTx = parseTx(wallet, tx)
-                                    nativeArray.pushMap(parsedTx)
-                                }
-                            }.forEach { it.join() }
+                        parsedTxs.forEach { nativeArray.pushMap(it) }
 
                         sendEvent("TransactionEvent") { args ->
                             args.putString("alias", alias)
@@ -177,6 +179,10 @@ class RNZcashModule(
                     val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
                     val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
 
+                    val ironwoodBalances = accountBalance?.ironwood
+                    val ironwoodAvailableZatoshi = ironwoodBalances?.available ?: Zatoshi(0L)
+                    val ironwoodTotalZatoshi = ironwoodBalances?.total ?: Zatoshi(0L)
+
                     sendEvent("BalanceEvent") { args ->
                         args.putString("alias", alias)
                         args.putString("transparentAvailableZatoshi", transparentAvailableZatoshi.value.toString())
@@ -185,6 +191,8 @@ class RNZcashModule(
                         args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
                         args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
                         args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
+                        args.putString("ironwoodAvailableZatoshi", ironwoodAvailableZatoshi.value.toString())
+                        args.putString("ironwoodTotalZatoshi", ironwoodTotalZatoshi.value.toString())
                     }
                 }
 
@@ -542,6 +550,107 @@ class RNZcashModule(
     }
 
     //
+    // region Orchard -> Ironwood migration (NU6.3) — v1 surface
+    //
+    // Signatures mirror the iOS bridge exactly, because the JS API is the
+    // cross-platform contract. The SDK-backed work lives in IronwoodMigration.kt
+    // and src/ironwood — see those for why it is bound at runtime rather than
+    // called directly, and for which parts the Android SDK cannot serve yet.
+
+    /**
+     * Emits the wallet's current transaction set as a `TransactionEvent`.
+     *
+     * The `allTransactions` collector above delivers the full list on its first
+     * emission, but that fires while `initialize` is still settling — before
+     * JavaScript has attached its listeners — so the delivery is a race the app
+     * can lose. Afterwards the collector only re-emits transactions whose mined
+     * height or state changed, so anything that settled while nothing was
+     * listening would never reach the app again.
+     *
+     * JavaScript calls this from `subscribe()`, once its listeners are attached,
+     * which is the only point at which delivery is guaranteed. Re-sending known
+     * transactions is harmless: the app updates only the ones that changed.
+     */
+    @ReactMethod
+    fun emitExistingTransactions(
+        alias: String,
+        promise: Promise,
+    ) {
+        val wallet = getWallet(alias)
+        wallet.coroutineScope.launch {
+            try {
+                val txList = wallet.allTransactions.first()
+                // Parse in parallel, but fill the array on one thread: see the
+                // collector above - WritableArray is not safe for concurrent
+                // mutation and these run on a multi-threaded dispatcher.
+                val parsedTxs =
+                    txList
+                        .map { tx -> async { parseTx(wallet, tx) } }
+                        .map { it.await() }
+                val nativeArray = Arguments.createArray()
+                parsedTxs.forEach { nativeArray.pushMap(it) }
+
+                sendEvent("TransactionEvent") { args ->
+                    args.putString("alias", alias)
+                    args.putArray("transactions", nativeArray)
+                }
+
+                // Record what we just sent, so the allTransactions collector does
+                // not treat these as unseen and emit the identical set a second
+                // time - which would parse every transaction twice on each login.
+                val emittedForAlias = emittedTransactions.getOrPut(alias) { mutableMapOf() }
+                txList.forEach { tx ->
+                    emittedForAlias[tx.txId.txIdString()] =
+                        EmittedTxState(
+                            minedHeight = tx.minedHeight,
+                            transactionState = tx.transactionState,
+                        )
+                }
+                promise.resolve(null)
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun ironwoodActivationHeight(
+        networkName: String,
+        promise: Promise,
+    ) {
+        promise.wrap {
+            // An unrecognized network answers null, matching iOS and the
+            // `number | null` JS contract. Defaulting to mainnet (as the
+            // derivation methods in this file do) would report a height that is
+            // wrong for the caller's network rather than admitting it has none.
+            networks[networkName]?.let {
+                IronwoodMigration.ironwoodActivationHeight(it)?.toInt()
+            }
+        }
+    }
+
+    @ReactMethod
+    fun proposeOrchardToIronwoodMigration(
+        alias: String,
+        promise: Promise,
+    ) {
+        // Synchronizer-bound work belongs on the wallet's own scope, like every
+        // other wallet method here: moduleScope outlives the synchronizer, so a
+        // proposal could still be running against one that `stop` has closed.
+        val wallet = getWallet(alias)
+        wallet.coroutineScope.launch {
+            try {
+                promise.resolve(
+                    IronwoodMigration.proposeOrchardToIronwoodMigration(wallet),
+                )
+            } catch (t: Throwable) {
+                promise.reject("Err", t)
+            }
+        }
+    }
+
+    // endregion
+
     // Utilities
     //
 

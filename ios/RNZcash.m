@@ -65,6 +65,11 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
+RCT_EXTERN_METHOD(emitExistingTransactions:(NSString *)alias
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
+
 // Derivation tool
 RCT_EXTERN_METHOD(deriveViewingKey:(NSString *)seed
 :(NSString *)network
@@ -81,6 +86,16 @@ RCT_EXTERN_METHOD(isValidAddress:(NSString *)address
 :(NSString *)network
 resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
+)
+
+// Orchard -> Ironwood migration (NU6.3)
+RCT_EXTERN_METHOD(proposeOrchardToIronwoodMigration:(NSString *)alias
+  resolver:(RCTPromiseResolveBlock)resolve
+  rejecter:(RCTPromiseRejectBlock)reject
+)
+RCT_EXTERN_METHOD(ironwoodActivationHeight:(NSString *)networkName
+  resolver:(RCTPromiseResolveBlock)resolve
+  rejecter:(RCTPromiseRejectBlock)reject
 )
 
 // Events
