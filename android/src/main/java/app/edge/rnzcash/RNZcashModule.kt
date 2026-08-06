@@ -39,6 +39,7 @@ class RNZcashModule(
     private data class EmittedTxState(
         val minedHeight: BlockHeight?,
         val transactionState: TransactionState,
+        val isExpired: Boolean,
     )
 
     private val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
@@ -126,19 +127,26 @@ class RNZcashModule(
                         txList.forEach { tx ->
                             val txId = tx.txId.txIdString()
                             val previousState = emittedForAlias[txId]
+                            val isExpired = isTxExpired(wallet, tx)
 
-                            // Check if this is a new transaction or if minedHeight/transactionState changed
+                            // Check if this is a new transaction or if minedHeight,
+                            // transactionState, or the expired verdict changed. The
+                            // expired verdict has its own trigger because it can flip
+                            // on its own: the scan floor reaches a stuck transaction's
+                            // expiry window without any tracked SDK field changing.
                             val isNew = previousState == null
                             val minedHeightChanged = previousState?.minedHeight != tx.minedHeight
                             val stateChanged = previousState?.transactionState != tx.transactionState
+                            val expiredChanged = previousState?.isExpired != isExpired
 
-                            if (isNew || minedHeightChanged || stateChanged) {
+                            if (isNew || minedHeightChanged || stateChanged || expiredChanged) {
                                 transactionsToEmit.add(tx)
                                 // Update our tracking
                                 emittedForAlias[txId] =
                                     EmittedTxState(
                                         minedHeight = tx.minedHeight,
                                         transactionState = tx.transactionState,
+                                        isExpired = isExpired,
                                     )
                             }
                         }
@@ -246,6 +254,38 @@ class RNZcashModule(
         }
     }
 
+    /**
+     * Whether a transaction has expired without ever being mined - the same
+     * verdict the wallet database's `v_transactions.expired_unmined` column
+     * reaches, and the signal iOS reports as `isExpiredUmined`.
+     *
+     * This deliberately does NOT use `TransactionState.Expired`. That state
+     * compares an unmined transaction's expiry height against the live network
+     * tip, so while a rewound wallet rescans - a resync un-mines the entire
+     * history until the scan re-reaches each block - every historical
+     * transaction sits below the tip's expiry cutoff and gets branded expired,
+     * and the app flashes the whole wallet as failed.
+     *
+     * Comparing against [CompactBlockProcessor.fullyScannedHeight] instead
+     * mirrors the database's own rule: a transaction is expired only once the
+     * wallet's contiguous scan has passed its expiry window without finding it
+     * mined. The floor trails the database's `MAX(blocks.height)` while ranges
+     * scan out of order, so this is equal-or-more conservative than the DB
+     * flag and converges with it (and with iOS) once the wallet is synced.
+     */
+    private fun isTxExpired(
+        wallet: SdkSynchronizer,
+        tx: TransactionOverview,
+    ): Boolean {
+        if (tx.minedHeight != null) return false
+        val expiryHeight = tx.expiryHeight ?: return false
+        // An expiry height of 0 disables expiry:
+        if (expiryHeight.value == 0L) return false
+        val scanFloor: BlockHeight? = wallet.processor.fullyScannedHeight.value
+        if (scanFloor == null) return false
+        return expiryHeight.value <= scanFloor.value
+    }
+
     private suspend fun parseTx(
         wallet: SdkSynchronizer,
         tx: TransactionOverview,
@@ -259,7 +299,7 @@ class RNZcashModule(
                 map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds?.toInt() ?: 0)
                 map.putString("rawTransactionId", tx.txId.txIdString())
                 map.putBoolean("isShielding", tx.isShielding)
-                map.putBoolean("isExpired", tx.transactionState == TransactionState.Expired)
+                map.putBoolean("isExpired", isTxExpired(wallet, tx))
                 tx.raw
                     ?.byteArray
                     ?.toHex()
@@ -604,6 +644,7 @@ class RNZcashModule(
                         EmittedTxState(
                             minedHeight = tx.minedHeight,
                             transactionState = tx.transactionState,
+                            isExpired = isTxExpired(wallet, tx),
                         )
                 }
                 promise.resolve(null)

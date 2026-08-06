@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fixed: Android no longer brands the entire transaction history as expired while a resync rescans the wallet. `isExpired` came from `TransactionState.Expired`, which compares an unmined transaction's expiry height against the live network tip — and a resync un-mines every transaction until the scan re-reaches its block, so the whole history flashed as failed in the app until the rescan completed. Android now reaches the same verdict the wallet database's `expired_unmined` column does, which is also the signal iOS reports: a transaction is expired only once the wallet's own contiguous scan has passed its expiry window without finding it mined.
+
 ## 0.13.1 (2026-08-02)
 
 - added: `ironwoodAvailableZatoshi` / `ironwoodTotalZatoshi` on `BalanceEvent`, on both platforms (zero until NU6.3 activates); the deprecated summed fields now include the ironwood pool.
