@@ -441,6 +441,15 @@ class RNZcash: RCTEventEmitter {
   ) {
     Task {
       if let wallet = await synchronizerStore.get(alias) {
+        // Which transactions are still waiting to be mined has to be captured
+        // before the rewind: afterwards every transaction looks unmined, so this
+        // is the only moment one of the wallet's own pending sends can be told
+        // apart from settled history.
+        let priorUnminedIds: Set<String> = Set(
+          ((try? await wallet.synchronizer.allTransactions()) ?? [])
+            .filter { $0.minedHeight == nil }
+            .map { $0.rawID.toHexStringTxId() }
+        )
         wallet.synchronizer.rewind(.birthday).sink(
           receiveCompletion: { completion in
             Task {
@@ -453,8 +462,24 @@ class RNZcash: RCTEventEmitter {
                 wallet.cancellables.forEach { $0.cancel() }
                 try await wallet.synchronizer.start()
                 wallet.subscribe()
+                // Report only the transactions the rescan will never find. The app
+                // clears its own transaction list for a resync and rebuilds it from
+                // what we send, and scanning re-finds everything that is mined - so
+                // sending the whole set here would refill the list the app had just
+                // emptied, at the heights it held before the rewind.
+                //
+                // Unmined transactions are the exception: scanning only discovers
+                // transactions in mined blocks, so nothing would bring one back.
+                // These are the wallet's own sends still waiting to be mined,
+                // identified before the rewind - testing minedHeight here would
+                // match everything, since the rewind unmines the whole history.
                 let txs = try await wallet.synchronizer.allTransactions()
-                wallet.emitTxs(transactions: txs)
+                let unminedTxs = txs.filter {
+                  priorUnminedIds.contains($0.rawID.toHexStringTxId())
+                }
+                if !unminedTxs.isEmpty {
+                  wallet.emitTxs(transactions: unminedTxs)
+                }
                 let balances = try await wallet.synchronizer.getAccountsBalances()
                 if let accountUUID = wallet.accountUUID,
                   let accountBalance = balances[accountUUID]

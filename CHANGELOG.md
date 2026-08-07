@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- changed: A rescan no longer re-reports the transactions it is about to re-find, on either platform. The app empties its own transaction list for a resync and rebuilds it from what we send, but both platforms immediately sent the whole set back — Android because the rewind changes every row and its emitted-transaction tracking was cleared, iOS because `rescan` explicitly re-sent `allTransactions` once the rewind finished. The list refilled instantly, at pre-rewind heights on Android and as unmined everywhere, so a resync appeared to do nothing and settled history was described as pending. Both platforms now stay quiet and report each transaction as the scan finds it again. The wallet's own sends that are still waiting to be mined are the exception and are re-sent, since scanning only discovers transactions in mined blocks and nothing else would bring one back.
+- fixed: Android no longer brands the entire transaction history as expired while a resync rescans the wallet. `isExpired` came from `TransactionState.Expired`, which compares an unmined transaction's expiry height against the live network tip — and a resync un-mines every transaction until the scan re-reaches its block, so the whole history flashed as failed in the app until the rescan completed. Android now reaches the same verdict the wallet database's `expired_unmined` column does, which is also the signal iOS reports: a transaction is expired only once the wallet's own contiguous scan has passed its expiry window without finding it mined.
+
 ## 0.13.1 (2026-08-02)
 
 - added: `ironwoodAvailableZatoshi` / `ironwoodTotalZatoshi` on `BalanceEvent`, on both platforms (zero until NU6.3 activates); the deprecated summed fields now include the ironwood pool.
