@@ -139,8 +139,18 @@ class RNZcashModule(
                             val stateChanged = previousState?.transactionState != tx.transactionState
                             val expiredChanged = previousState?.isExpired != isExpired
 
+                            // A transaction losing its mined height is the rewind undoing
+                            // our own scan, not news about the transaction: it is still
+                            // settled on chain, and the scan will find it again. Reporting
+                            // it would refill the list the app empties for a resync, and
+                            // would describe settled history as pending until the rescan
+                            // caught up. Tracking still moves to the unmined state, so
+                            // re-mining reads as a change and emits normally.
+                            val unminedByRewind =
+                                previousState?.minedHeight != null && tx.minedHeight == null
+
                             if (isNew || minedHeightChanged || stateChanged || expiredChanged) {
-                                transactionsToEmit.add(tx)
+                                if (!unminedByRewind) transactionsToEmit.add(tx)
                                 // Update our tracking
                                 emittedForAlias[txId] =
                                     EmittedTxState(
@@ -332,8 +342,19 @@ class RNZcashModule(
     ) {
         val wallet = getWallet(alias)
         moduleScope.launch {
-            // Clear emitted transactions tracking and starting block height for this alias
-            emittedTransactions[alias]?.clear()
+            // Forget only the transactions that are not mined. The app clears its
+            // own transaction list for a resync and rebuilds it from what we emit,
+            // so anything we still consider emitted will stay absent until the
+            // rescan re-finds it - which is the point.
+            //
+            // Unmined transactions are the exception: the app just dropped them
+            // too, and a rescan will never "find" one, because scanning only
+            // discovers transactions in mined blocks. Forgetting them here means
+            // the collector re-emits them once and they survive the resync.
+            //
+            // Clearing the whole map instead would re-emit every transaction at
+            // its pre-rewind height, refilling the list the app had just emptied.
+            emittedTransactions[alias]?.values?.removeAll { it.minedHeight == null }
 
             wallet.coroutineScope
                 .async {
