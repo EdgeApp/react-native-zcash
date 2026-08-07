@@ -38,7 +38,6 @@ class RNZcashModule(
     // Data class to track what we've emitted for each transaction
     private data class EmittedTxState(
         val minedHeight: BlockHeight?,
-        val transactionState: TransactionState,
         val isExpired: Boolean,
     )
 
@@ -129,23 +128,73 @@ class RNZcashModule(
                             val previousState = emittedForAlias[txId]
                             val isExpired = isTxExpired(wallet, tx)
 
-                            // Check if this is a new transaction or if minedHeight,
-                            // transactionState, or the expired verdict changed. The
-                            // expired verdict has its own trigger because it can flip
-                            // on its own: the scan floor reaches a stuck transaction's
-                            // expiry window without any tracked SDK field changing.
+                            // Report a transaction when it is new to us, when it gains or
+                            // loses a mined height, or when our expiry verdict changes.
+                            // The expired verdict needs its own trigger because it can
+                            // flip on its own: the scan floor reaches a stuck
+                            // transaction's expiry window without any SDK field changing.
+                            //
+                            // Deliberately not keyed off `transactionState`. That is
+                            // derived from the live network tip - the same thing
+                            // `isTxExpired` exists to avoid - so during a rescan it turns
+                            // Expired for transactions the scan simply has not reached
+                            // yet, and using it here would report a send back into the
+                            // list the app had just emptied. It never reaches JavaScript
+                            // either; everything the app is told comes from the mined
+                            // height and our own expiry verdict, which have their own
+                            // triggers above.
+                            //
+                            // The expiry verdict is re-read here rather than driven by the
+                            // scan floor, which can advance without this flow emitting. In
+                            // practice the flow turns over every few seconds - it follows
+                            // the network height as well as the transaction table, so a new
+                            // block alone is enough - and the verdict is re-read on each
+                            // pass, which bounds how long a newly expired send can read as
+                            // pending. Driving it off the floor directly would tighten that
+                            // window at the cost of firing this pass far more often during
+                            // a scan, for a transaction state that is already terminal.
                             val isNew = previousState == null
                             val minedHeightChanged = previousState?.minedHeight != tx.minedHeight
-                            val stateChanged = previousState?.transactionState != tx.transactionState
                             val expiredChanged = previousState?.isExpired != isExpired
 
-                            if (isNew || minedHeightChanged || stateChanged || expiredChanged) {
-                                transactionsToEmit.add(tx)
+                            // A rewind undoes our own scan; it is not news about the
+                            // transaction. Two of its side effects would otherwise read as
+                            // changes worth reporting, and reporting either would refill
+                            // the list the app empties for a resync:
+                            //
+                            // Losing a mined height. The transaction is still settled on
+                            // chain and the scan will find it again, so describing it as
+                            // pending in the meantime is wrong. Tracking still moves to the
+                            // unmined state, so re-mining reads as a change and reports
+                            // normally - that is how the list rebuilds.
+                            //
+                            // Losing an expired verdict. The rewind drops the scan floor
+                            // back below the expiry window, so a transaction we had already
+                            // called expired stops looking expired. That says nothing new
+                            // either, and re-reporting it would put a failed send back in
+                            // the list as pending. It is reported again once the scan floor
+                            // climbs past its expiry, this time as a genuine expiry.
+                            //
+                            // A chain reorg unmines a transaction the same way, and is
+                            // suppressed the same way, which is a deliberate trade. Telling
+                            // the two apart needs a flag scoped to our own rewind, and the
+                            // clear condition for it - "the scan has caught up again" - has
+                            // no obvious answer. The cost of not telling them apart is
+                            // bounded: a reorged transaction keeps reading as confirmed
+                            // until it is mined again, which on this chain is usually the
+                            // next few blocks, and one that never returns is reported as
+                            // expired once the scan floor passes its expiry window.
+                            val stillUnmined = tx.minedHeight == null
+                            val unminedByRewind = previousState?.minedHeight != null && stillUnmined
+                            val unexpiredByRewind =
+                                previousState?.isExpired == true && !isExpired && stillUnmined
+
+                            if (isNew || minedHeightChanged || expiredChanged) {
+                                if (!unminedByRewind && !unexpiredByRewind) transactionsToEmit.add(tx)
                                 // Update our tracking
                                 emittedForAlias[txId] =
                                     EmittedTxState(
                                         minedHeight = tx.minedHeight,
-                                        transactionState = tx.transactionState,
                                         isExpired = isExpired,
                                     )
                             }
@@ -273,6 +322,7 @@ class RNZcashModule(
      * scan out of order, so this is equal-or-more conservative than the DB
      * flag and converges with it (and with iOS) once the wallet is synced.
      */
+
     private fun isTxExpired(
         wallet: SdkSynchronizer,
         tx: TransactionOverview,
@@ -332,9 +382,17 @@ class RNZcashModule(
     ) {
         val wallet = getWallet(alias)
         moduleScope.launch {
-            // Clear emitted transactions tracking and starting block height for this alias
-            emittedTransactions[alias]?.clear()
-
+            // The emitted-transaction tracking is deliberately left alone. The app
+            // clears its own transaction list for a resync and rebuilds it from
+            // what we report, and everything we already consider reported stays
+            // absent until the scan finds it again - which is the point.
+            //
+            // Nothing is carried across, not even a send still waiting to be
+            // mined. Keeping one would mean re-reporting a transaction the scan
+            // will never rediscover, which is how a send that never confirms
+            // becomes a row that outlives every resync. Letting the synchronizer
+            // be the only thing that reintroduces a transaction keeps the list
+            // honest about what the wallet can actually see.
             wallet.coroutineScope
                 .async {
                     wallet.rewindToNearestHeight(wallet.latestBirthdayHeight)
@@ -643,7 +701,6 @@ class RNZcashModule(
                     emittedForAlias[tx.txId.txIdString()] =
                         EmittedTxState(
                             minedHeight = tx.minedHeight,
-                            transactionState = tx.transactionState,
                             isExpired = isTxExpired(wallet, tx),
                         )
                 }
