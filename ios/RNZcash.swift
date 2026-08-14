@@ -453,8 +453,14 @@ class RNZcash: RCTEventEmitter {
                 wallet.cancellables.forEach { $0.cancel() }
                 try await wallet.synchronizer.start()
                 wallet.subscribe()
-                let txs = try await wallet.synchronizer.allTransactions()
-                wallet.emitTxs(transactions: txs)
+                // Nothing is reported here. The app clears its own transaction
+                // list for a resync and rebuilds it from what we send, so sending
+                // the set back would refill the list it had just emptied, at the
+                // heights it held before the rewind. The event stream reports each
+                // transaction as the scan finds it again, and that is the only
+                // thing that should reintroduce one - including a send still
+                // waiting to be mined, which the app sees again when it is mined
+                // rather than being carried across every resync.
                 let balances = try await wallet.synchronizer.getAccountsBalances()
                 if let accountUUID = wallet.accountUUID,
                   let accountBalance = balances[accountUUID]
