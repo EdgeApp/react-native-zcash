@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- changed: Update checkpoints
+
 ## 0.13.2 (2026-08-14)
 
 - changed: A rescan no longer re-reports the transactions it is about to re-find, on either platform. The app empties its own transaction list for a resync and rebuilds it from what we send, but both platforms immediately sent the whole set back — Android because the rewind changes every row and its emitted-transaction tracking was cleared, iOS because `rescan` explicitly re-sent `allTransactions` once the rewind finished. The list refilled instantly, at pre-rewind heights on Android and as unmined everywhere, so a resync appeared to do nothing and settled history was described as pending. Both platforms now stay quiet and report each transaction as the scan finds it again, and nothing is carried across a resync — not even a send still waiting to be mined, which would otherwise be a row the scan can never rediscover and that outlives every resync.
