@@ -16,25 +16,25 @@
     "Kevin Gorham <kevin.gorham@z.cash>"
   ],
   "main": "lib/rnzcash.rn.js",
-  "types": "lib/src/react-native.d.ts",
+  "types": "lib/react-native.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/src/react-native.d.ts",
+      "types": "./lib/react-native.d.ts",
       "default": "./lib/rnzcash.rn.js"
     },
     "./node": {
-      "types": "./lib/src/node.d.ts",
+      "types": "./lib/node.d.ts",
       "default": "./lib/src/node.js"
     },
     "./rn": {
-      "types": "./lib/src/react-native.d.ts",
+      "types": "./lib/react-native.d.ts",
       "default": "./lib/rnzcash.rn.js"
     },
     "./package.json": "./package.json"
   },
   "typesVersions": {
     "*": {
-      "node": ["lib/src/node.d.ts"]
+      "node": ["lib/node.d.ts"]
     }
   },
   "files": [
