@@ -1,287 +1,109 @@
 package app.edge.rnzcash
 
-import cash.z.ecc.android.sdk.SdkSynchronizer
-import cash.z.ecc.android.sdk.Synchronizer
-import cash.z.ecc.android.sdk.WalletInitMode
-import cash.z.ecc.android.sdk.exception.LightWalletException
-import cash.z.ecc.android.sdk.ext.*
-import cash.z.ecc.android.sdk.internal.*
-import cash.z.ecc.android.sdk.model.*
-import cash.z.ecc.android.sdk.tool.DerivationTool
-import cash.z.ecc.android.sdk.type.*
-import co.electriccoin.lightwallet.client.LightWalletClient
-import co.electriccoin.lightwallet.client.model.LightWalletEndpoint
-import co.electriccoin.lightwallet.client.model.Response
-import com.facebook.react.bridge.*
-import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.Promise
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.WritableMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.Base64
+import uniffi.zcash.Poll
+import java.io.File
 
 class RNZcashModule(
     private val reactContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(reactContext) {
-    /**
-     * Scope for anything that out-lives the synchronizer, meaning anything that can be used before
-     * the synchronizer starts or after it stops. Everything else falls within the scope of the
-     * synchronizer and should use `synchronizer.coroutineScope` whenever a scope is needed.
-     */
-    private var moduleScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
-    private var synchronizerMap = mutableMapOf<String, SdkSynchronizer>()
-
-    // Track emitted transactions per alias to only emit new or updated transactions
-    private val emittedTransactions = mutableMapOf<String, MutableMap<String, EmittedTxState>>()
-
-    // Data class to track what we've emitted for each transaction
-    private data class EmittedTxState(
-        val minedHeight: BlockHeight?,
-        val isExpired: Boolean,
-    )
-
-    private val networks = mapOf("mainnet" to ZcashNetwork.Mainnet, "testnet" to ZcashNetwork.Testnet)
+    private val moduleScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
     override fun getName() = "RNZcash"
+
+    @Volatile private var documentDirReady = false
+
+    init {
+        System.setProperty("uniffi.component.zcash.libraryOverride", "zcash")
+    }
+
+    private fun ensureDocumentDirectory() {
+        if (documentDirReady) return
+        synchronized(this) {
+            if (documentDirReady) return
+            val dir = File(reactContext.filesDir, "native/zcash")
+            dir.mkdirs()
+            uniffi.zcash.setDocumentDirectory(dir.absolutePath)
+            documentDirReady = true
+        }
+    }
+
+    private inline fun Promise.wrap(block: () -> Any?) {
+        try {
+            ensureDocumentDirectory()
+            resolve(block())
+        } catch (t: Throwable) {
+            reject("Err", t)
+        }
+    }
+
+    private fun pollMap(snap: Poll): WritableMap {
+        val balances = Arguments.createMap()
+        balances.putString("transparentAvailableZatoshi", snap.balances.transparentAvailableZatoshi)
+        balances.putString("transparentTotalZatoshi", snap.balances.transparentTotalZatoshi)
+        balances.putString("saplingAvailableZatoshi", snap.balances.saplingAvailableZatoshi)
+        balances.putString("saplingTotalZatoshi", snap.balances.saplingTotalZatoshi)
+        balances.putString("orchardAvailableZatoshi", snap.balances.orchardAvailableZatoshi)
+        balances.putString("orchardTotalZatoshi", snap.balances.orchardTotalZatoshi)
+        balances.putString("ironwoodAvailableZatoshi", snap.balances.ironwoodAvailableZatoshi)
+        balances.putString("ironwoodTotalZatoshi", snap.balances.ironwoodTotalZatoshi)
+
+        val transactions = Arguments.createArray()
+        snap.transactions.forEach { tx ->
+            val map = Arguments.createMap()
+            map.putString("rawTransactionId", tx.rawTransactionId)
+            map.putInt("blockTimeInSeconds", tx.blockTimeInSeconds.toInt())
+            map.putInt("minedHeight", tx.minedHeight.toInt())
+            map.putString("value", tx.value)
+            tx.fee?.let { map.putString("fee", it) }
+            tx.toAddress?.let { map.putString("toAddress", it) }
+            map.putBoolean("isShielding", tx.isShielding)
+            map.putBoolean("isExpired", tx.isExpired)
+            map.putArray("memos", Arguments.fromList(tx.memos))
+            transactions.pushMap(map)
+        }
+
+        val out = Arguments.createMap()
+        out.putString("alias", snap.alias)
+        out.putString("status", snap.status)
+        out.putDouble("scanProgress", snap.scanProgress)
+        out.putInt("networkBlockHeight", snap.networkBlockHeight.toInt())
+        out.putMap("balances", balances)
+        out.putArray("transactions", transactions)
+        return out
+    }
 
     @ReactMethod
     fun initialize(
         seed: String,
         birthdayHeight: Int,
         alias: String,
-        networkName: String = "mainnet",
-        defaultHost: String = "mainnet.lightwalletd.com",
-        defaultPort: Int = 9067,
+        networkName: String,
+        defaultHost: String,
+        defaultPort: Int,
         newWallet: Boolean,
         promise: Promise,
     ) {
         moduleScope.launch {
             promise.wrap {
-                val network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
-                val endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
-                val seedPhrase = SeedPhrase.new(seed)
-                val initMode = if (newWallet) WalletInitMode.NewWallet else WalletInitMode.ExistingWallet
-                if (!synchronizerMap.containsKey(alias)) {
-                    synchronizerMap[alias] =
-                        Synchronizer.new(
-                            alias,
-                            BlockHeight.new(birthdayHeight.toLong()),
-                            reactApplicationContext,
-                            endpoint,
-                            AccountCreateSetup(
-                                accountName = alias,
-                                keySource = null,
-                                seed = FirstClassByteArray(seedPhrase.toByteArray()),
-                            ),
-                            initMode,
-                            network,
-                            false, // isTorEnabled
-                            false, // isExchangeRateEnabled
-                        ) as SdkSynchronizer
-                }
-                val wallet = getWallet(alias)
-                val scope = wallet.coroutineScope
-                // Synchronizer.progress now blends scan + recovery and never hits 100%, so
-                // read the un-blended per-wallet scan progress off the processor instead.
-                combine(wallet.processor.scanProgress, wallet.networkHeight, wallet.status) { scanProgress, networkHeight, status ->
-                    return@combine mapOf("scanProgress" to scanProgress, "networkHeight" to networkHeight, "status" to status)
-                }.collectWith(scope) { map ->
-                    val scanProgressDecimal = map["scanProgress"] as PercentDecimal
-                    val status = map["status"] as Synchronizer.Status
-                    var networkBlockHeight = map["networkHeight"] as BlockHeight?
-                    if (networkBlockHeight == null) networkBlockHeight = BlockHeight.new(birthdayHeight.toLong())
-
-                    // Report scan progress as a 0-100 percentage but keep the decimal places
-                    // (no truncation) so consumers get granular, more frequent updates. Force
-                    // 100.0 when SYNCED, and 0.0 when not actively syncing (stopped /
-                    // disconnected / initializing) instead of reusing a stale percentage, to
-                    // match the iOS module.
-                    val scanProgress =
-                        when (status) {
-                            Synchronizer.Status.SYNCED -> 100.0
-                            Synchronizer.Status.SYNCING -> scanProgressDecimal.decimal.toDouble() * 100
-                            else -> 0.0
-                        }
-
-                    sendEvent("UpdateEvent") { args ->
-                        args.putString("alias", alias)
-                        args.putDouble("scanProgress", scanProgress)
-                        args.putInt("networkBlockHeight", networkBlockHeight.value.toInt())
-                    }
-                }
-                wallet.status.collectWith(scope) { status ->
-                    sendEvent("StatusEvent") { args ->
-                        args.putString("alias", alias)
-                        args.putString("name", status.toString())
-                    }
-                }
-                wallet.allTransactions.collectWith(scope) { txList ->
-                    scope.launch {
-                        // Get or create the tracking map for this alias
-                        val emittedForAlias = emittedTransactions.getOrPut(alias) { mutableMapOf() }
-
-                        val transactionsToEmit = mutableListOf<TransactionOverview>()
-
-                        txList.forEach { tx ->
-                            val txId = tx.txId.txIdString()
-                            val previousState = emittedForAlias[txId]
-                            val isExpired = isTxExpired(wallet, tx)
-
-                            // Report a transaction when it is new to us, when it gains or
-                            // loses a mined height, or when our expiry verdict changes.
-                            // The expired verdict needs its own trigger because it can
-                            // flip on its own: the scan floor reaches a stuck
-                            // transaction's expiry window without any SDK field changing.
-                            //
-                            // Deliberately not keyed off `transactionState`. That is
-                            // derived from the live network tip - the same thing
-                            // `isTxExpired` exists to avoid - so during a rescan it turns
-                            // Expired for transactions the scan simply has not reached
-                            // yet, and using it here would report a send back into the
-                            // list the app had just emptied. It never reaches JavaScript
-                            // either; everything the app is told comes from the mined
-                            // height and our own expiry verdict, which have their own
-                            // triggers above.
-                            //
-                            // The expiry verdict is re-read here rather than driven by the
-                            // scan floor, which can advance without this flow emitting. In
-                            // practice the flow turns over every few seconds - it follows
-                            // the network height as well as the transaction table, so a new
-                            // block alone is enough - and the verdict is re-read on each
-                            // pass, which bounds how long a newly expired send can read as
-                            // pending. Driving it off the floor directly would tighten that
-                            // window at the cost of firing this pass far more often during
-                            // a scan, for a transaction state that is already terminal.
-                            val isNew = previousState == null
-                            val minedHeightChanged = previousState?.minedHeight != tx.minedHeight
-                            val expiredChanged = previousState?.isExpired != isExpired
-
-                            // A rewind undoes our own scan; it is not news about the
-                            // transaction. Two of its side effects would otherwise read as
-                            // changes worth reporting, and reporting either would refill
-                            // the list the app empties for a resync:
-                            //
-                            // Losing a mined height. The transaction is still settled on
-                            // chain and the scan will find it again, so describing it as
-                            // pending in the meantime is wrong. Tracking still moves to the
-                            // unmined state, so re-mining reads as a change and reports
-                            // normally - that is how the list rebuilds.
-                            //
-                            // Losing an expired verdict. The rewind drops the scan floor
-                            // back below the expiry window, so a transaction we had already
-                            // called expired stops looking expired. That says nothing new
-                            // either, and re-reporting it would put a failed send back in
-                            // the list as pending. It is reported again once the scan floor
-                            // climbs past its expiry, this time as a genuine expiry.
-                            //
-                            // A chain reorg unmines a transaction the same way, and is
-                            // suppressed the same way, which is a deliberate trade. Telling
-                            // the two apart needs a flag scoped to our own rewind, and the
-                            // clear condition for it - "the scan has caught up again" - has
-                            // no obvious answer. The cost of not telling them apart is
-                            // bounded: a reorged transaction keeps reading as confirmed
-                            // until it is mined again, which on this chain is usually the
-                            // next few blocks, and one that never returns is reported as
-                            // expired once the scan floor passes its expiry window.
-                            val stillUnmined = tx.minedHeight == null
-                            val unminedByRewind = previousState?.minedHeight != null && stillUnmined
-                            val unexpiredByRewind =
-                                previousState?.isExpired == true && !isExpired && stillUnmined
-
-                            if (isNew || minedHeightChanged || expiredChanged) {
-                                if (!unminedByRewind && !unexpiredByRewind) transactionsToEmit.add(tx)
-                                // Update our tracking
-                                emittedForAlias[txId] =
-                                    EmittedTxState(
-                                        minedHeight = tx.minedHeight,
-                                        isExpired = isExpired,
-                                    )
-                            }
-                        }
-
-                        if (transactionsToEmit.isEmpty()) {
-                            return@launch
-                        }
-
-                        // Parse in parallel, but fill the array on one thread:
-                        // WritableArray is not safe for concurrent mutation, and
-                        // these coroutines run on a multi-threaded dispatcher.
-                        // Pushing in order also keeps the emitted order stable.
-                        val parsedTxs =
-                            transactionsToEmit
-                                .map { tx -> async { parseTx(wallet, tx) } }
-                                .map { it.await() }
-                        val nativeArray = Arguments.createArray()
-                        parsedTxs.forEach { nativeArray.pushMap(it) }
-
-                        sendEvent("TransactionEvent") { args ->
-                            args.putString("alias", alias)
-                            args.putArray("transactions", nativeArray)
-                        }
-                    }
-                }
-                wallet.walletBalances.collectWith(scope) { balancesMap ->
-                    val accountBalance = balancesMap?.values?.firstOrNull()
-                    val transparentBalance = accountBalance?.unshielded
-                    val saplingBalances = accountBalance?.sapling
-                    val orchardBalances = accountBalance?.orchard
-
-                    val transparentAvailableZatoshi = transparentBalance ?: Zatoshi(0L)
-                    val transparentTotalZatoshi = transparentBalance ?: Zatoshi(0L)
-
-                    val saplingAvailableZatoshi = saplingBalances?.available ?: Zatoshi(0L)
-                    val saplingTotalZatoshi = saplingBalances?.total ?: Zatoshi(0L)
-
-                    val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
-                    val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
-
-                    val ironwoodBalances = accountBalance?.ironwood
-                    val ironwoodAvailableZatoshi = ironwoodBalances?.available ?: Zatoshi(0L)
-                    val ironwoodTotalZatoshi = ironwoodBalances?.total ?: Zatoshi(0L)
-
-                    sendEvent("BalanceEvent") { args ->
-                        args.putString("alias", alias)
-                        args.putString("transparentAvailableZatoshi", transparentAvailableZatoshi.value.toString())
-                        args.putString("transparentTotalZatoshi", transparentTotalZatoshi.value.toString())
-                        args.putString("saplingAvailableZatoshi", saplingAvailableZatoshi.value.toString())
-                        args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
-                        args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
-                        args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
-                        args.putString("ironwoodAvailableZatoshi", ironwoodAvailableZatoshi.value.toString())
-                        args.putString("ironwoodTotalZatoshi", ironwoodTotalZatoshi.value.toString())
-                    }
-                }
-
-                fun handleError(
-                    level: String,
-                    error: Throwable?,
-                ) {
-                    sendEvent("ErrorEvent") { args ->
-                        args.putString("alias", alias)
-                        args.putString("level", level)
-                        args.putString("message", error?.message ?: "Unknown error")
-                    }
-                }
-
-                // Error listeners
-                wallet.onCriticalErrorHandler = { error ->
-                    handleError("critical", error)
-                    false
-                }
-                wallet.onProcessorErrorHandler = { error ->
-                    handleError("error", error)
-                    true
-                }
-                wallet.onSetupErrorHandler = { error ->
-                    handleError("error", error)
-                    false
-                }
-                wallet.onChainErrorHandler = { errorHeight, rewindHeight ->
-                    val message = "Chain error detected at height: $errorHeight. Rewinding to: $rewindHeight"
-                    handleError("error", Throwable(message))
-                }
-                return@wrap null
+                uniffi.zcash.initialize(
+                    seed,
+                    birthdayHeight.toUInt(),
+                    alias,
+                    networkName,
+                    defaultHost,
+                    defaultPort.toUInt(),
+                    newWallet,
+                )
+                null
             }
         }
     }
@@ -291,88 +113,9 @@ class RNZcashModule(
         alias: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
         moduleScope.launch {
-            try {
-                wallet.closeFlow().first()
-                synchronizerMap.remove(alias)
-                promise.resolve(null)
-            } catch (t: Throwable) {
-                promise.reject("Err", t)
-            }
+            promise.wrap { uniffi.zcash.stop(alias) }
         }
-    }
-
-    /**
-     * Whether a transaction has expired without ever being mined - the same
-     * verdict the wallet database's `v_transactions.expired_unmined` column
-     * reaches, and the signal iOS reports as `isExpiredUmined`.
-     *
-     * This deliberately does NOT use `TransactionState.Expired`. That state
-     * compares an unmined transaction's expiry height against the live network
-     * tip, so while a rewound wallet rescans - a resync un-mines the entire
-     * history until the scan re-reaches each block - every historical
-     * transaction sits below the tip's expiry cutoff and gets branded expired,
-     * and the app flashes the whole wallet as failed.
-     *
-     * Comparing against [CompactBlockProcessor.fullyScannedHeight] instead
-     * mirrors the database's own rule: a transaction is expired only once the
-     * wallet's contiguous scan has passed its expiry window without finding it
-     * mined. The floor trails the database's `MAX(blocks.height)` while ranges
-     * scan out of order, so this is equal-or-more conservative than the DB
-     * flag and converges with it (and with iOS) once the wallet is synced.
-     */
-
-    private fun isTxExpired(
-        wallet: SdkSynchronizer,
-        tx: TransactionOverview,
-    ): Boolean {
-        if (tx.minedHeight != null) return false
-        val expiryHeight = tx.expiryHeight ?: return false
-        // An expiry height of 0 disables expiry:
-        if (expiryHeight.value == 0L) return false
-        val scanFloor: BlockHeight? = wallet.processor.fullyScannedHeight.value
-        if (scanFloor == null) return false
-        return expiryHeight.value <= scanFloor.value
-    }
-
-    private suspend fun parseTx(
-        wallet: SdkSynchronizer,
-        tx: TransactionOverview,
-    ): WritableMap {
-        val map = Arguments.createMap()
-        val job =
-            wallet.coroutineScope.launch {
-                map.putString("value", tx.netValue.value.toString())
-                tx.feePaid?.let { fee -> map.putString("fee", fee.value.toString()) }
-                map.putInt("minedHeight", tx.minedHeight?.value?.toInt() ?: 0)
-                map.putInt("blockTimeInSeconds", tx.blockTimeEpochSeconds?.toInt() ?: 0)
-                map.putString("rawTransactionId", tx.txId.txIdString())
-                map.putBoolean("isShielding", tx.isShielding)
-                map.putBoolean("isExpired", isTxExpired(wallet, tx))
-                tx.raw
-                    ?.byteArray
-                    ?.toHex()
-                    ?.let { hex -> map.putString("raw", hex) }
-                if (tx.isSentTransaction) {
-                    try {
-                        val recipient = wallet.getRecipients(tx).first()
-                        if (recipient.addressValue != null) {
-                            map.putString("toAddress", recipient.addressValue)
-                        }
-                    } catch (t: Throwable) {
-                        // Error is OK. SDK limitation means we cannot find recipient for shielding transactions
-                    }
-                }
-                if (tx.memoCount > 0) {
-                    val memos = wallet.getMemos(tx).take(tx.memoCount).toList()
-                    map.putArray("memos", Arguments.fromList(memos))
-                } else {
-                    map.putArray("memos", Arguments.createArray())
-                }
-            }
-        job.join()
-        return map
     }
 
     @ReactMethod
@@ -380,58 +123,33 @@ class RNZcashModule(
         alias: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
         moduleScope.launch {
-            // The emitted-transaction tracking is deliberately left alone. The app
-            // clears its own transaction list for a resync and rebuilds it from
-            // what we report, and everything we already consider reported stays
-            // absent until the scan finds it again - which is the point.
-            //
-            // Nothing is carried across, not even a send still waiting to be
-            // mined. Keeping one would mean re-reporting a transaction the scan
-            // will never rediscover, which is how a send that never confirms
-            // becomes a row that outlives every resync. Letting the synchronizer
-            // be the only thing that reintroduces a transaction keeps the list
-            // honest about what the wallet can actually see.
-            wallet.coroutineScope
-                .async {
-                    wallet.rewindToNearestHeight(wallet.latestBirthdayHeight)
-                }.await()
-            promise.resolve(null)
+            promise.wrap {
+                uniffi.zcash.rescan(alias)
+                null
+            }
         }
     }
 
     @ReactMethod
     fun deriveViewingKey(
         seed: String,
-        network: String = "mainnet",
+        network: String,
         promise: Promise,
     ) {
         moduleScope.launch {
-            promise.wrap {
-                val seedPhrase = SeedPhrase.new(seed)
-                val keys =
-                    DerivationTool.getInstance().deriveUnifiedFullViewingKeys(
-                        seedPhrase.toByteArray(),
-                        networks.getOrDefault(network, ZcashNetwork.Mainnet),
-                        DerivationTool.DEFAULT_NUMBER_OF_ACCOUNTS,
-                    )[0]
-                return@wrap keys.encoding
-            }
+            promise.wrap { uniffi.zcash.deriveViewingKey(seed, network) }
         }
     }
-
-    //
-    // Properties
-    //
 
     @ReactMethod
     fun getLatestNetworkHeight(
         alias: String,
         promise: Promise,
-    ) = promise.wrap {
-        val wallet = getWallet(alias)
-        return@wrap wallet.latestHeight
+    ) {
+        moduleScope.launch {
+            promise.wrap { uniffi.zcash.getLatestNetworkHeight(alias).toInt() }
+        }
     }
 
     @ReactMethod
@@ -441,27 +159,7 @@ class RNZcashModule(
         promise: Promise,
     ) {
         moduleScope.launch {
-            promise.wrap {
-                val endpoint = LightWalletEndpoint(host, port, true)
-                val lightwalletService = LightWalletClient.new(reactApplicationContext, endpoint)
-                return@wrap when (val response = lightwalletService.getLatestBlockHeight()) {
-                    is Response.Success -> {
-                        response.result.value.toInt()
-                    }
-
-                    is Response.Failure -> {
-                        throw LightWalletException.DownloadBlockException(
-                            response.code,
-                            response.description,
-                            response.toThrowable(),
-                        )
-                    }
-
-                    else -> {
-                        throw Exception("Unknown response type")
-                    }
-                }
-            }
+            promise.wrap { uniffi.zcash.getBirthdayHeight(host, port.toUInt()).toInt() }
         }
     }
 
@@ -470,27 +168,17 @@ class RNZcashModule(
         alias: String,
         zatoshi: String,
         toAddress: String,
-        memo: String = "",
+        memo: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            try {
-                val account = wallet.getAccounts().first()
-                val proposal =
-                    wallet.proposeTransfer(
-                        account,
-                        toAddress,
-                        Zatoshi(zatoshi.toLong()),
-                        memo,
-                    )
-                val map = Arguments.createMap()
-                map.putInt("transactionCount", proposal.transactionCount())
-                map.putString("totalFee", proposal.totalFeeRequired().value.toString())
-                map.putString("proposalBase64", Base64.getEncoder().encodeToString(proposal.toByteArray()))
-                promise.resolve(map)
-            } catch (t: Throwable) {
-                promise.reject("Err", t)
+        moduleScope.launch {
+            promise.wrap {
+                uniffi.zcash.proposeTransfer(
+                    alias,
+                    zatoshi,
+                    toAddress,
+                    memo.ifEmpty { null },
+                )
             }
         }
     }
@@ -501,27 +189,11 @@ class RNZcashModule(
         paymentUri: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            try {
-                val account = wallet.getAccounts().first()
-                val proposal =
-                    wallet.proposeFulfillingPaymentUri(
-                        account,
-                        paymentUri,
-                    )
-                val map = Arguments.createMap()
-                map.putInt("transactionCount", proposal.transactionCount())
-                map.putString("totalFee", proposal.totalFeeRequired().value.toString())
-                map.putString("proposalBase64", Base64.getEncoder().encodeToString(proposal.toByteArray()))
-                promise.resolve(map)
-            } catch (t: Throwable) {
-                promise.reject("Err", t)
-            }
+        moduleScope.launch {
+            promise.wrap { uniffi.zcash.proposeFulfillingPaymentUri(alias, paymentUri) }
         }
     }
 
-    @kotlin.ExperimentalStdlibApi
     @ReactMethod
     fun createTransfer(
         alias: String,
@@ -529,29 +201,19 @@ class RNZcashModule(
         seed: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            try {
-                val seedPhrase = SeedPhrase.new(seed)
-                val usk =
-                    DerivationTool.getInstance().deriveUnifiedSpendingKey(
-                        seedPhrase.toByteArray(),
-                        wallet.network,
-                        Zip32AccountIndex.new(0),
-                    )
-                val proposalByteArray = Base64.getDecoder().decode(proposalBase64)
-                val proposal = Proposal.fromByteArray(proposalByteArray)
+        moduleScope.launch {
+            promise.wrap { uniffi.zcash.createTransfer(alias, proposalBase64, seed) }
+        }
+    }
 
-                val txs =
-                    wallet.coroutineScope
-                        .async {
-                            wallet.createProposedTransactions(proposal, usk).take(proposal.transactionCount()).toList()
-                        }.await()
-                val txid = txs[txs.lastIndex].txIdString() // The last transfer is the most relevant to the user
-                promise.resolve(txid)
-            } catch (t: Throwable) {
-                promise.reject("Err", t)
-            }
+    @ReactMethod
+    fun broadcastTransfer(
+        alias: String,
+        txid: String,
+        promise: Promise,
+    ) {
+        moduleScope.launch {
+            promise.wrap { uniffi.zcash.broadcastTransfer(alias, txid) }
         }
     }
 
@@ -563,65 +225,24 @@ class RNZcashModule(
         threshold: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            try {
-                val account = wallet.getAccounts().first()
-                val proposal = wallet.proposeShielding(account, Zatoshi(threshold.toLong()), memo, null)
-                if (proposal == null) {
-                    promise.reject("Err", Exception("Failed to propose shielding transaction"))
-                    return@launch
-                }
-                val seedPhrase = SeedPhrase.new(seed)
-                val usk =
-                    DerivationTool.getInstance().deriveUnifiedSpendingKey(
-                        seedPhrase.toByteArray(),
-                        wallet.network,
-                        Zip32AccountIndex.new(0),
-                    )
-                val result =
-                    wallet.createProposedTransactions(
-                        proposal,
-                        usk,
-                    )
-                val shieldingTx = result.first()
-
-                if (shieldingTx is TransactionSubmitResult.Success) {
-                    val shieldingTxid = shieldingTx.txIdString()
-                    promise.resolve(shieldingTxid)
-                } else {
-                    promise.reject("Err", Exception("Failed to create shielding transaction"))
-                }
-            } catch (t: Throwable) {
-                promise.reject("Err", t)
-            }
+        moduleScope.launch {
+            promise.wrap { uniffi.zcash.shieldFunds(alias, seed, memo, threshold) }
         }
     }
-
-    //
-    // AddressTool
-    //
 
     @ReactMethod
     fun deriveUnifiedAddress(
         alias: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            try {
-                val account = wallet.getAccounts().first()
-                val unifiedAddress = wallet.getUnifiedAddress(account)
-                val saplingAddress = wallet.getSaplingAddress(account)
-                val transparentAddress = wallet.getTransparentAddress(account)
-
+        moduleScope.launch {
+            promise.wrap {
+                val addresses = uniffi.zcash.deriveUnifiedAddress(alias)
                 val map = Arguments.createMap()
-                map.putString("unifiedAddress", unifiedAddress)
-                map.putString("saplingAddress", saplingAddress)
-                map.putString("transparentAddress", transparentAddress)
-                promise.resolve(map)
-            } catch (t: Throwable) {
-                promise.reject("Err", t)
+                map.putString("unifiedAddress", addresses.unifiedAddress)
+                map.putString("saplingAddress", addresses.saplingAddress)
+                map.putString("transparentAddress", addresses.transparentAddress)
+                map
             }
         }
     }
@@ -633,80 +254,19 @@ class RNZcashModule(
         promise: Promise,
     ) {
         moduleScope.launch {
-            promise.wrap {
-                var isValid = false
-                val wallets = synchronizerMap.asIterable()
-                for (wallet in wallets) {
-                    if (wallet.value.network.networkName == network) {
-                        isValid = wallet.value.isValidAddress(address)
-                        break
-                    }
-                }
-                return@wrap isValid
-            }
+            promise.wrap { uniffi.zcash.isValidAddress(address, network) }
         }
     }
 
-    //
-    // region Orchard -> Ironwood migration (NU6.3) — v1 surface
-    //
-    // Signatures mirror the iOS bridge exactly, because the JS API is the
-    // cross-platform contract. The SDK-backed work lives in IronwoodMigration.kt
-    // and src/ironwood — see those for why it is bound at runtime rather than
-    // called directly, and for which parts the Android SDK cannot serve yet.
-
-    /**
-     * Emits the wallet's current transaction set as a `TransactionEvent`.
-     *
-     * The `allTransactions` collector above delivers the full list on its first
-     * emission, but that fires while `initialize` is still settling — before
-     * JavaScript has attached its listeners — so the delivery is a race the app
-     * can lose. Afterwards the collector only re-emits transactions whose mined
-     * height or state changed, so anything that settled while nothing was
-     * listening would never reach the app again.
-     *
-     * JavaScript calls this from `subscribe()`, once its listeners are attached,
-     * which is the only point at which delivery is guaranteed. Re-sending known
-     * transactions is harmless: the app updates only the ones that changed.
-     */
     @ReactMethod
     fun emitExistingTransactions(
         alias: String,
         promise: Promise,
     ) {
-        val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            try {
-                val txList = wallet.allTransactions.first()
-                // Parse in parallel, but fill the array on one thread: see the
-                // collector above - WritableArray is not safe for concurrent
-                // mutation and these run on a multi-threaded dispatcher.
-                val parsedTxs =
-                    txList
-                        .map { tx -> async { parseTx(wallet, tx) } }
-                        .map { it.await() }
-                val nativeArray = Arguments.createArray()
-                parsedTxs.forEach { nativeArray.pushMap(it) }
-
-                sendEvent("TransactionEvent") { args ->
-                    args.putString("alias", alias)
-                    args.putArray("transactions", nativeArray)
-                }
-
-                // Record what we just sent, so the allTransactions collector does
-                // not treat these as unseen and emit the identical set a second
-                // time - which would parse every transaction twice on each login.
-                val emittedForAlias = emittedTransactions.getOrPut(alias) { mutableMapOf() }
-                txList.forEach { tx ->
-                    emittedForAlias[tx.txId.txIdString()] =
-                        EmittedTxState(
-                            minedHeight = tx.minedHeight,
-                            isExpired = isTxExpired(wallet, tx),
-                        )
-                }
-                promise.resolve(null)
-            } catch (t: Throwable) {
-                promise.reject("Err", t)
+        moduleScope.launch {
+            promise.wrap {
+                uniffi.zcash.emitExistingTransactions(alias)
+                null
             }
         }
     }
@@ -716,13 +276,9 @@ class RNZcashModule(
         networkName: String,
         promise: Promise,
     ) {
-        promise.wrap {
-            // An unrecognized network answers null, matching iOS and the
-            // `number | null` JS contract. Defaulting to mainnet (as the
-            // derivation methods in this file do) would report a height that is
-            // wrong for the caller's network rather than admitting it has none.
-            networks[networkName]?.let {
-                IronwoodMigration.ironwoodActivationHeight(it)?.toInt()
+        moduleScope.launch {
+            promise.wrap {
+                uniffi.zcash.ironwoodActivationHeight(networkName)?.toInt()
             }
         }
     }
@@ -732,50 +288,18 @@ class RNZcashModule(
         alias: String,
         promise: Promise,
     ) {
-        // Synchronizer-bound work belongs on the wallet's own scope, like every
-        // other wallet method here: moduleScope outlives the synchronizer, so a
-        // proposal could still be running against one that `stop` has closed.
-        val wallet = getWallet(alias)
-        wallet.coroutineScope.launch {
-            try {
-                promise.resolve(
-                    IronwoodMigration.proposeOrchardToIronwoodMigration(wallet),
-                )
-            } catch (t: Throwable) {
-                promise.reject("Err", t)
-            }
+        moduleScope.launch {
+            promise.wrap { uniffi.zcash.proposeOrchardToIronwoodMigration(alias) }
         }
     }
 
-    // endregion
-
-    // Utilities
-    //
-
-    /**
-     * Retrieve wallet object from synchronizer map
-     */
-    private fun getWallet(alias: String): SdkSynchronizer = synchronizerMap[alias] ?: throw Exception("Wallet not found")
-
-    /**
-     * Wrap the given block of logic in a promise, rejecting for any error.
-     */
-    private inline fun <T> Promise.wrap(block: () -> T) {
-        try {
-            resolve(block())
-        } catch (t: Throwable) {
-            reject("Err", t)
-        }
-    }
-
-    private fun sendEvent(
-        eventName: String,
-        putArgs: (WritableMap) -> Unit,
+    @ReactMethod
+    fun poll(
+        alias: String,
+        promise: Promise,
     ) {
-        val args = Arguments.createMap()
-        putArgs(args)
-        reactApplicationContext
-            .getJSModule(RCTDeviceEventEmitter::class.java)
-            .emit(eventName, args)
+        moduleScope.launch {
+            promise.wrap { pollMap(uniffi.zcash.poll(alias)) }
+        }
     }
 }

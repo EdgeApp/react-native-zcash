@@ -1,0 +1,61 @@
+[package]
+name = "edge-zcash"
+version = "0.13.2"
+edition = "2024"
+publish = false
+
+[lib]
+name = "zcash"
+crate-type = ["cdylib", "staticlib"]
+
+[features]
+default = ["napi-backend"]
+napi-backend = ["dep:napi", "dep:napi-derive", "dep:napi-build"]
+uniffi-backend = ["dep:uniffi", "dep:thiserror"]
+
+[dependencies]
+bip0039 = { version = "0.14", features = ["rand"] }
+hex = "0.4"
+http = "1"
+json = "0.12"
+lightwallet-protocol = { git = "https://github.com/zingolabs/lightwallet-protocol-rust", rev = "9bdfdc77eb283f2a3d26c27100cc2ac90148cd93", features = ["rebuild-proto"] }
+napi = { version = "2.16", default-features = false, features = [
+    "napi8",
+    "async",
+    "tokio_rt",
+], optional = true }
+napi-derive = { version = "2.16", optional = true }
+nonempty = "0.11"
+once_cell = "1"
+pepper-sync = { path = "/Users/paul/git/zingolib/pepper-sync" }
+tempfile = "3"
+thiserror = { version = "2", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+uniffi = { version = "0.29", optional = true, features = ["cli"] }
+zcash_address = "0.13"
+zcash_client_backend = { version = "0.24.0", default-features = false, features = [
+    "orchard",
+    "transparent-inputs",
+] }
+zcash_keys = { version = "0.16.1", features = [
+    "transparent-inputs",
+    "sapling",
+    "orchard",
+] }
+zcash_protocol = "0.10.4"
+zingolib = { path = "/Users/paul/git/zingolib/zingolib", default-features = false }
+zingo-status = { path = "/Users/paul/git/zingolib/zingo-status" }
+zip32 = "0.2"
+
+[build-dependencies]
+napi-build = { version = "2.1", optional = true }
+uniffi = { version = "0.29", optional = true, features = ["build"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["uniffi-backend"]
+
+[patch.crates-io]
+# Same Ironwood proto pin as zingolib's workspace.
+lightwallet-protocol = { git = "https://github.com/zingolabs/lightwallet-protocol-rust", rev = "9bdfdc77eb283f2a3d26c27100cc2ac90148cd93" }

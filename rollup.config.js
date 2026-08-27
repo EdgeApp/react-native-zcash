@@ -43,5 +43,12 @@ export default [
     input: 'src/react-native.ts',
     output: [{ file: packageJson.main, format: 'cjs', sourcemap: true }],
     plugins: [resolve(resolveOpts), babel(babelOpts), filesize()]
+  },
+  // Node N-API build:
+  {
+    external,
+    input: 'src/node.ts',
+    output: [{ file: 'lib/src/node.js', format: 'cjs', sourcemap: true }],
+    plugins: [resolve(resolveOpts), babel(babelOpts), filesize()]
   }
 ]

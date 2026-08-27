@@ -15,13 +15,20 @@ import {
   ProposeTransferOpts,
   ShieldFundsInfo,
   SpendFailure,
+  SpendSuccess,
   SynchronizerCallbacks
 } from './types'
 export * from './types'
 
 const { RNZcash } = NativeModules
 
-type Callback = (...args: any[]) => any
+function parseJsonObject(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return { errorMessage: value }
+  }
+}
 
 export const Tools = {
   deriveViewingKey: async (
@@ -42,13 +49,6 @@ export const Tools = {
     const result = await RNZcash.isValidAddress(address, network)
     return result
   },
-  /**
-   * The NU6.3 (Ironwood) activation height for the network, or null when the
-   * network has none. Stateless — safe to call before any synchronizer
-   * exists; the app gates migration UI on the chain reaching this height.
-   * Answers on both platforms: these are consensus constants (ZIP 258), which
-   * neither SDK exposes.
-   */
   getIronwoodActivationHeight: async (
     network: Network = 'mainnet'
   ): Promise<number | null> => {
@@ -62,6 +62,9 @@ export class Synchronizer {
   subscriptions: EventSubscription[]
   alias: string
   network: Network
+  private timer?: ReturnType<typeof setTimeout>
+  private callbacks?: SynchronizerCallbacks
+  private lastStatus?: string
 
   constructor(alias: string, network: Network) {
     this.eventEmitter = new NativeEventEmitter(RNZcash)
@@ -102,15 +105,11 @@ export class Synchronizer {
     await RNZcash.rescan(this.alias)
   }
 
-  /**
-   * Proposes the Orchard-only sweep to the wallet's own address. Execute the
-   * returned proposal through the ordinary createTransfer path.
-   */
   async proposeOrchardToIronwoodMigration(): Promise<
     ImmediateMigrationProposal
   > {
     const result = await RNZcash.proposeOrchardToIronwoodMigration(this.alias)
-    return result
+    return parseJsonObject(result) as ImmediateMigrationProposal
   }
 
   async proposeTransfer(opts: ProposeTransferOpts): Promise<ProposalSuccess> {
@@ -120,7 +119,7 @@ export class Synchronizer {
       opts.toAddress,
       opts.memo
     )
-    return result
+    return parseJsonObject(result) as ProposalSuccess
   }
 
   async proposeFulfillingPaymentURI(
@@ -130,17 +129,28 @@ export class Synchronizer {
       this.alias,
       paymentUri
     )
-    return result
+    return parseJsonObject(result) as ProposalSuccess
   }
 
   async createTransfer(
     opts: CreateTransferOpts
-  ): Promise<string | SpendFailure> {
-    const result = await RNZcash.createTransfer(
-      this.alias,
-      opts.proposalBase64,
-      opts.mnemonicSeed
-    )
+  ): Promise<SpendSuccess | SpendFailure> {
+    try {
+      const result = await RNZcash.createTransfer(
+        this.alias,
+        opts.proposalBase64,
+        opts.mnemonicSeed
+      )
+      return parseJsonObject(result) as SpendSuccess
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+      return { errorMessage }
+    }
+  }
+
+  async broadcastTransfer(txid: string): Promise<string> {
+    const result = await RNZcash.broadcastTransfer(this.alias, txid)
     return result
   }
 
@@ -154,8 +164,6 @@ export class Synchronizer {
     return result
   }
 
-  // Events
-
   subscribe({
     onBalanceChanged,
     onStatusChanged,
@@ -163,76 +171,94 @@ export class Synchronizer {
     onUpdate,
     onError
   }: SynchronizerCallbacks): void {
-    this.setListener('BalanceEvent', event => {
-      // Both platforms emit these, but an older native build paired with a
-      // newer JS bundle would not; default them so the shape is consistent:
-      event.ironwoodAvailableZatoshi = event.ironwoodAvailableZatoshi ?? '0'
-      event.ironwoodTotalZatoshi = event.ironwoodTotalZatoshi ?? '0'
-
-      const {
-        transparentAvailableZatoshi,
-        transparentTotalZatoshi,
-        saplingAvailableZatoshi,
-        saplingTotalZatoshi,
-        orchardAvailableZatoshi,
-        orchardTotalZatoshi,
-        ironwoodAvailableZatoshi,
-        ironwoodTotalZatoshi
-      } = event
-
-      // The deprecated sums mean "the whole wallet": ironwood must be
-      // included so funds don't vanish from them mid-migration.
-      event.availableZatoshi = add(
-        add(
-          add(transparentAvailableZatoshi, saplingAvailableZatoshi),
-          orchardAvailableZatoshi
-        ),
-        ironwoodAvailableZatoshi
-      )
-      event.totalZatoshi = add(
-        add(
-          add(transparentTotalZatoshi, saplingTotalZatoshi),
-          orchardTotalZatoshi
-        ),
-        ironwoodTotalZatoshi
-      )
-      onBalanceChanged(event)
-    })
-    this.setListener('StatusEvent', onStatusChanged)
-    this.setListener('TransactionEvent', onTransactionsChanged)
-    this.setListener('UpdateEvent', onUpdate)
-    this.setListener('ErrorEvent', onError)
-
-    // Native drops events until a listener exists, and its transaction stream
-    // only carries what is newly found or newly mined. A transaction that
-    // settled while nothing was listening - mined while the app was closed, or
-    // during a failed sync - would otherwise never be reported again and would
-    // stay pending forever. Ask for the current set now that the listeners
-    // above are attached; this ordering is what makes the delivery reliable.
-    RNZcash.emitExistingTransactions(this.alias).catch((error: unknown) => {
+    this.callbacks = {
+      onBalanceChanged,
+      onStatusChanged,
+      onTransactionsChanged,
+      onUpdate,
+      onError
+    }
+    this.pump().catch(error => {
       onError({
         alias: this.alias,
         level: 'error',
-        message: `emitExistingTransactions failed: ${String(error)}`
+        message: `event pump failed: ${String(error)}`
       })
     })
   }
 
-  private setListener<T>(
-    eventName: string,
-    callback: Callback = (t: any) => null
-  ): void {
-    this.subscriptions.push(
-      this.eventEmitter.addListener(eventName, arg =>
-        arg.alias === this.alias ? callback(arg) : null
-      )
-    )
-  }
-
   unsubscribe(): void {
+    if (this.timer != null) {
+      clearTimeout(this.timer)
+      this.timer = undefined
+    }
+    this.callbacks = undefined
     this.subscriptions.forEach(subscription => {
       subscription.remove()
     })
+    this.subscriptions = []
+  }
+
+  private async pump(): Promise<void> {
+    if (this.callbacks == null) return
+    const snap = await RNZcash.poll(this.alias)
+    const {
+      onBalanceChanged,
+      onStatusChanged,
+      onTransactionsChanged,
+      onUpdate
+    } = this.callbacks
+
+    const event = {
+      ...snap.balances,
+      availableZatoshi: add(
+        add(
+          add(
+            snap.balances.transparentAvailableZatoshi,
+            snap.balances.saplingAvailableZatoshi
+          ),
+          snap.balances.orchardAvailableZatoshi
+        ),
+        snap.balances.ironwoodAvailableZatoshi
+      ),
+      totalZatoshi: add(
+        add(
+          add(
+            snap.balances.transparentTotalZatoshi,
+            snap.balances.saplingTotalZatoshi
+          ),
+          snap.balances.orchardTotalZatoshi
+        ),
+        snap.balances.ironwoodTotalZatoshi
+      )
+    }
+    onBalanceChanged(event)
+
+    if (snap.status !== this.lastStatus) {
+      this.lastStatus = snap.status
+      onStatusChanged({
+        alias: this.alias,
+        name: snap.status as 'STOPPED' | 'DISCONNECTED' | 'SYNCING' | 'SYNCED'
+      })
+    }
+
+    onTransactionsChanged({ transactions: snap.transactions })
+    onUpdate({
+      alias: this.alias,
+      scanProgress: snap.scanProgress,
+      networkBlockHeight: snap.networkBlockHeight
+    })
+
+    const delay = snap.status === 'SYNCING' ? 500 : 2000
+    this.timer = setTimeout(() => {
+      this.pump().catch(error => {
+        this.callbacks?.onError({
+          alias: this.alias,
+          level: 'error',
+          message: `event pump failed: ${String(error)}`
+        })
+      })
+    }, delay)
   }
 }
 

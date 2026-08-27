@@ -17,6 +17,26 @@
   ],
   "main": "lib/rnzcash.rn.js",
   "types": "lib/src/react-native.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/src/react-native.d.ts",
+      "default": "./lib/rnzcash.rn.js"
+    },
+    "./node": {
+      "types": "./lib/src/node.d.ts",
+      "default": "./lib/src/node.js"
+    },
+    "./rn": {
+      "types": "./lib/src/react-native.d.ts",
+      "default": "./lib/rnzcash.rn.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "node": ["lib/src/node.d.ts"]
+    }
+  },
   "files": [
     "/android/build.gradle",
     "/android/src/",
@@ -24,22 +44,27 @@
     "/ios/",
     "/lib/",
     "/LICENSE",
+    "/node.d.ts",
+    "/node.js",
     "/package.json",
+    "/prebuilds/",
     "/react-native-zcash.podspec",
     "/README.md",
     "/src/"
   ],
   "scripts": {
     "build": "(cd android && gradle assemble -DheapDumpOnOutOfMemoryError=false)",
+    "build-native-host": "node -r sucrase/register ./scripts/build-native-host.ts",
+    "build-native-android": "node -r sucrase/register ./scripts/build-native-android.ts",
+    "build-native-ios": "node -r sucrase/register ./scripts/build-native-ios.ts",
     "fix-kotlin": "ktlint --format 'android/src/**/*.kt'",
-    "fix-swift": "swift-format format -i ios/RNZcash.swift",
+    "fix-swift": "swift-format format -i ios/RNZcash.swift ios/EdgeZcashClient.swift",
     "fix": "npm run lint -- --fix",
     "lint": "eslint .",
     "precommit": "lint-staged && npm run prepare",
-    "prepack": "npm run update-checkpoints && npm run update-sources",
+    "prepack": "npm run prepare",
     "prepare": "husky install && rimraf lib && rollup -c && tsc",
-    "update-checkpoints": "node -r sucrase/register scripts/updateCheckpoints.ts",
-    "update-sources": "node -r sucrase/register ./scripts/updateSources.ts"
+    "smoke-node": "node -r sucrase/register ./scripts/smoke-node.ts"
   },
   "lint-staged": {
     "*.{js,ts}": "eslint"
@@ -82,5 +107,10 @@
   },
   "peerDependencies": {
     "react-native": ">=0.47.0 <1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
   }
 }

@@ -1,146 +1,97 @@
-import Combine
 import Foundation
-import MnemonicSwift
-import SwiftProtobuf
-import os
-
-actor SynchronizerStore {
-  private var map: [String: WalletSynchronizer] = [:]
-
-  func get(_ alias: String) -> WalletSynchronizer? {
-    map[alias]
-  }
-
-  func set(_ wallet: WalletSynchronizer, for alias: String) {
-    map[alias] = wallet
-  }
-
-  func remove(_ alias: String) {
-    map.removeValue(forKey: alias)
-  }
-
-}
-
-let synchronizerStore = SynchronizerStore()
-
-struct ConfirmedTx {
-  var minedHeight: Int
-  var toAddress: String?
-  var raw: String?
-  var rawTransactionId: String
-  var blockTimeInSeconds: Int
-  var value: String
-  var fee: String?
-  var isShielding: Bool
-  var isExpired: Bool
-  var memos: [String]?
-  var dictionary: [String: Any?] {
-    return [
-      "minedHeight": minedHeight,
-      "toAddress": toAddress,
-      "raw": raw,
-      "rawTransactionId": rawTransactionId,
-      "blockTimeInSeconds": blockTimeInSeconds,
-      "value": value,
-      "fee": fee,
-      "memos": memos ?? [],
-      "isShielding": isShielding,
-      "isExpired": isExpired,
-    ]
-  }
-  var nsDictionary: NSDictionary {
-    return dictionary as NSDictionary
-  }
-}
-
-struct ProcessorState {
-  var scanProgress: Double
-  var networkBlockHeight: Int
-  var dictionary: [String: Any] {
-    return [
-      "scanProgress": scanProgress,
-      "networkBlockHeight": networkBlockHeight,
-    ]
-  }
-  var nsDictionary: NSDictionary {
-    return dictionary as NSDictionary
-  }
-}
-
-// Used when calling reject where there isn't an error object
-let genericError = NSError(domain: "", code: 0)
 
 @objc(RNZcash)
 class RNZcash: RCTEventEmitter {
-  var hasListeners: Bool = false
+  private static var didSetDocumentDirectory = false
 
   override static func requiresMainQueueSetup() -> Bool {
     return true
   }
 
-  private func getNetworkParams(_ network: String) -> ZcashNetwork {
-    switch network {
-    case "testnet":
-      return ZcashNetworkBuilder.network(for: .testnet)
-    default:
-      return ZcashNetworkBuilder.network(for: .mainnet)
+  private func ensureDocumentDirectory() throws {
+    if RNZcash.didSetDocumentDirectory {
+      return
+    }
+    let root = try FileManager.default.url(
+      for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+    let path = root.appendingPathComponent("native/zcash", isDirectory: true).path
+    try EdgeZcashClient.rustSetDocumentDirectory(path: path)
+    RNZcash.didSetDocumentDirectory = true
+  }
+
+  private func run(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    _ reject: @escaping RCTPromiseRejectBlock,
+    _ name: String,
+    _ body: @escaping () throws -> Any?
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        try self.ensureDocumentDirectory()
+        let value = try body()
+        resolve(value)
+      } catch {
+        reject(name, error.localizedDescription, error)
+      }
     }
   }
 
-  // Synchronizer
+  private func pollDictionary(_ snap: Poll) -> NSDictionary {
+    let transactions: [NSDictionary] = snap.transactions.map { tx in
+      var dict: [String: Any] = [
+        "rawTransactionId": tx.rawTransactionId,
+        "blockTimeInSeconds": tx.blockTimeInSeconds,
+        "minedHeight": tx.minedHeight,
+        "value": tx.value,
+        "isShielding": tx.isShielding,
+        "isExpired": tx.isExpired,
+        "memos": tx.memos,
+      ]
+      if let fee = tx.fee {
+        dict["fee"] = fee
+      }
+      if let toAddress = tx.toAddress {
+        dict["toAddress"] = toAddress
+      }
+      return dict as NSDictionary
+    }
+    let balances: NSDictionary = [
+      "transparentAvailableZatoshi": snap.balances.transparentAvailableZatoshi,
+      "transparentTotalZatoshi": snap.balances.transparentTotalZatoshi,
+      "saplingAvailableZatoshi": snap.balances.saplingAvailableZatoshi,
+      "saplingTotalZatoshi": snap.balances.saplingTotalZatoshi,
+      "orchardAvailableZatoshi": snap.balances.orchardAvailableZatoshi,
+      "orchardTotalZatoshi": snap.balances.orchardTotalZatoshi,
+      "ironwoodAvailableZatoshi": snap.balances.ironwoodAvailableZatoshi,
+      "ironwoodTotalZatoshi": snap.balances.ironwoodTotalZatoshi,
+    ]
+    return [
+      "alias": snap.alias,
+      "status": snap.status,
+      "scanProgress": snap.scanProgress,
+      "networkBlockHeight": snap.networkBlockHeight,
+      "balances": balances,
+      "transactions": transactions,
+    ] as NSDictionary
+  }
+
   @objc func initialize(
     _ seed: String, _ birthdayHeight: Int, _ alias: String, _ networkName: String,
     _ defaultHost: String, _ defaultPort: Int, _ newWallet: Bool,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      let network = getNetworkParams(networkName)
-      let endpoint = LightWalletEndpoint(address: defaultHost, port: defaultPort, secure: true)
-      let initializer = Initializer(
-        cacheDbURL: try! cacheDbURLHelper(alias, network),
-        fsBlockDbRoot: try! fsBlockDbRootURLHelper(alias, network),
-        generalStorageURL: try! generalStorageURLHelper(alias, network),
-        dataDbURL: try! dataDbURLHelper(alias, network),
-        torDirURL: try! torDirURLHelper(alias, network),
-        endpoint: endpoint,
-        network: network,
-        spendParamsURL: try! spendParamsURLHelper(alias),
-        outputParamsURL: try! outputParamsURLHelper(alias),
-        saplingParamsSourceURL: SaplingParamsSourceURL.default,
-        alias: ZcashSynchronizerAlias.custom(alias),
-        isTorEnabled: false,
-        isExchangeRateEnabled: false
+    run(resolve, reject, "InitializeError") {
+      try EdgeZcashClient.rustInitialize(
+        mnemonicSeed: seed,
+        birthdayHeight: UInt32(birthdayHeight),
+        alias: alias,
+        networkName: networkName,
+        defaultHost: defaultHost,
+        defaultPort: UInt32(defaultPort),
+        newWallet: newWallet
       )
-      if await synchronizerStore.get(alias) == nil {
-        do {
-          let wallet = try WalletSynchronizer(
-            alias: alias, initializer: initializer, emitter: sendToJs)
-          let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
-          let initMode = newWallet ? WalletInitMode.newWallet : WalletInitMode.existingWallet
-          let ufvk = try deriveUnifiedViewingKey(seed, network)
-
-          _ = try await wallet.synchronizer.prepare(
-            with: seedBytes,
-            walletBirthday: birthdayHeight,
-            for: initMode,
-            name: alias,
-            keySource: nil
-          )
-          try await wallet.synchronizer.start()
-          let accounts = try await wallet.synchronizer.listAccounts()
-          let accountUUID = accounts.first(where: { $0.ufvk == ufvk })?.id
-          wallet.accountUUID = accountUUID
-          wallet.subscribe()
-          await synchronizerStore.set(wallet, for: alias)
-          resolve(nil)
-        } catch {
-          reject("InitializeError", "Synchronizer failed to initialize", error)
-        }
-      } else {
-        // Wallet already initialized
-        resolve(nil)
-      }
+      return nil
     }
   }
 
@@ -148,15 +99,8 @@ class RNZcash: RCTEventEmitter {
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        wallet.synchronizer.stop()
-        wallet.cancellables.forEach { $0.cancel() }
-        await synchronizerStore.remove(alias)
-        resolve(nil)
-      } else {
-        reject("StopError", "Wallet does not exist", genericError)
-      }
+    run(resolve, reject, "StopError") {
+      try EdgeZcashClient.rustStop(alias: alias)
     }
   }
 
@@ -164,35 +108,17 @@ class RNZcash: RCTEventEmitter {
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        do {
-          let height = try await wallet.synchronizer.latestHeight()
-          resolve(height)
-        } catch {
-          reject("getLatestNetworkHeight", "Failed to query blockheight", error)
-        }
-      } else {
-        reject("getLatestNetworkHeightError", "Wallet does not exist", genericError)
-      }
+    run(resolve, reject, "getLatestNetworkHeight") {
+      try EdgeZcashClient.rustGetLatestNetworkHeight(alias: alias)
     }
   }
 
-  // A convenience method to get the block height when the synchronizer isn't running
   @objc func getBirthdayHeight(
     _ host: String, _ port: Int, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      do {
-        let endpoint = LightWalletEndpoint(address: host, port: port, secure: true)
-        let lightwalletd: LightWalletService = LightWalletGRPCService(endpoint: endpoint)
-        let height = try await lightwalletd.latestBlockHeight(mode: ServiceMode.direct)
-        await lightwalletd.closeConnections()
-        resolve(height)
-      } catch {
-        reject("getLatestNetworkHeightGrpc", "Failed to query blockheight", error)
-      }
+    run(resolve, reject, "getBirthdayHeight") {
+      try EdgeZcashClient.rustGetBirthdayHeight(host: host, port: UInt32(port))
     }
   }
 
@@ -201,49 +127,10 @@ class RNZcash: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        let amount = Int64(zatoshi)
-        if amount == nil {
-          reject("ProposeTransferError", "Amount is invalid", genericError)
-          return
-        }
-
-        do {
-          var sdkMemo: Memo? = nil
-          if memo != "" {
-            sdkMemo = try Memo(string: memo)
-          }
-          guard let accountUUID = wallet.accountUUID else {
-            reject("ProposeTransferError", "Account UUID not found", genericError)
-            return
-          }
-          let proposal = try await wallet.synchronizer.proposeTransfer(
-            accountUUID: accountUUID,
-            recipient: Recipient(toAddress, network: wallet.synchronizer.network.networkType),
-            amount: Zatoshi(amount!),
-            memo: sdkMemo
-          )
-
-          let proposalBase64 = try proposal.inner.serializedData().base64EncodedString()
-
-          let out: NSMutableDictionary = [
-            "proposalBase64": proposalBase64,
-            "transactionCount": proposal.transactionCount(),
-            "totalFee": String(proposal.totalFeeRequired().amount),
-          ]
-          resolve(out)
-        } catch let error as ZcashError {
-          if case .rustCreateToAddress(let message) = error {
-            // error message with amounts
-            reject("proposeTransferError", message, error)
-          } else {
-            reject("proposeTransferError", "Failed to propose transfer", error)
-          }
-        }
-      } else {
-        reject("ProposeTransferError", "Wallet does not exist", genericError)
-      }
+    run(resolve, reject, "ProposeTransferError") {
+      let memoArg = memo.isEmpty ? nil : memo
+      return try EdgeZcashClient.rustProposeTransfer(
+        alias: alias, zatoshi: zatoshi, toAddress: toAddress, memo: memoArg)
     }
   }
 
@@ -252,34 +139,9 @@ class RNZcash: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        do {
-          guard let accountUUID = wallet.accountUUID else {
-            reject("proposeFulfillingPaymentURI", "Account UUID not found", genericError)
-            return
-          }
-          let proposal = try await wallet.synchronizer.proposefulfillingPaymentURI(
-            paymentUri,
-            accountUUID: accountUUID
-          )
-          let proposalBase64 = try proposal.inner.serializedData().base64EncodedString()
-
-          let out: NSMutableDictionary = [
-            "proposalBase64": proposalBase64,
-            "transactionCount": proposal.transactionCount(),
-            "totalFee": String(proposal.totalFeeRequired().amount),
-          ]
-
-          resolve(out)
-        } catch let error as ZcashError {
-          reject("proposeFulfillingPaymentURI", "Failed to propose from payment URI", error)
-        } catch {
-          reject("proposeFulfillingPaymentURI", "Unknown error", error)
-        }
-      } else {
-        reject("proposeFulfillingPaymentURI", "Wallet does not exist", genericError)
-      }
+    run(resolve, reject, "proposeFulfillingPaymentURI") {
+      try EdgeZcashClient.rustProposeFulfillingPaymentUri(
+        alias: alias, paymentUri: paymentUri)
     }
   }
 
@@ -288,43 +150,19 @@ class RNZcash: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        do {
-          let spendingKey = try deriveUnifiedSpendingKey(seed, wallet.synchronizer.network)
-          let data = Data.init(base64Encoded: proposalBase64)!
-          let ffiProposal = try FfiProposal(serializedData: data)
-          let proposal = Proposal(inner: ffiProposal)
+    run(resolve, reject, "createTransfer") {
+      try EdgeZcashClient.rustCreateTransfer(
+        alias: alias, proposalBase64: proposalBase64, mnemonicSeed: seed)
+    }
+  }
 
-          let transactions = try await wallet.synchronizer.createProposedTransactions(
-            proposal: proposal, spendingKey: spendingKey
-          )
-
-          var lastTxid = ""  // The last transfer is the most relevant to the user
-          for try await tx in transactions {
-            switch tx {
-            case .grpcFailure(_, let error):
-              throw error
-            case .success(let txId):
-              lastTxid = txId.toHexStringTxId()
-              continue
-            case .submitFailure(txId: _, let code, let description):
-              throw NSError(
-                domain:
-                  "transaction failed to submit with code: \(code) - description: \(description)",
-                code: 0)
-            case .notAttempted(_):
-              throw NSError(domain: "transaction not attempted", code: 0)
-            }
-          }
-
-          resolve(lastTxid)
-        } catch {
-          reject("createTransfer", "Failed to spend", error)
-        }
-      } else {
-        reject("createTransfer", "Wallet does not exist", genericError)
-      }
+  @objc func broadcastTransfer(
+    _ alias: String, _ txid: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(resolve, reject, "broadcastTransfer") {
+      try EdgeZcashClient.rustBroadcastTransfer(alias: alias, txid: txid)
     }
   }
 
@@ -333,105 +171,19 @@ class RNZcash: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        if !wallet.fullySynced {
-          reject("shieldFunds", "Wallet is not synced", genericError)
-          return
-        }
-
-        do {
-          let spendingKey = try deriveUnifiedSpendingKey(seed, wallet.synchronizer.network)
-          let sdkMemo = try Memo(string: memo)
-          let shieldingThreshold = Int64(threshold) ?? 10000
-
-          guard let accountUUID = wallet.accountUUID else {
-            reject("shieldFunds", "Account UUID not found", genericError)
-            return
-          }
-
-          guard
-            let proposal = try await wallet.synchronizer.proposeShielding(
-              accountUUID: accountUUID,
-              shieldingThreshold: Zatoshi(shieldingThreshold),
-              memo: sdkMemo
-            )
-          else {
-            throw NSError(
-              domain: "shieldFunds",
-              code: -1,
-              userInfo: [NSLocalizedDescriptionKey: "Proposal was nil"]
-            )
-
-          }
-
-          let stream = try await wallet.synchronizer.createProposedTransactions(
-            proposal: proposal,
-            spendingKey: spendingKey
-          )
-
-          if let result = try await stream.first(where: { _ in true }) {
-            switch result {
-            case .success(let txId):
-              resolve(txId.toHexStringTxId())
-              return
-
-            default:
-              throw NSError(
-                domain: "shieldFunds",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed: \(result)"]
-              )
-            }
-          } else {
-            // Stream ended without producing any result
-            throw NSError(
-              domain: "shieldFunds",
-              code: -1,
-              userInfo: [NSLocalizedDescriptionKey: "No result returned"]
-            )
-          }
-        } catch {
-          reject("shieldFunds", "Failed to shield funds", genericError)
-        }
-      } else {
-        reject("shieldFunds", "Wallet does not exist", genericError)
-      }
+    run(resolve, reject, "shieldFunds") {
+      try EdgeZcashClient.rustShieldFunds(
+        alias: alias, seed: seed, memo: memo, threshold: threshold)
     }
   }
 
-  /// Emits the wallet's current transaction set as a `TransactionEvent`.
-  ///
-  /// The synchronizer's event stream only carries transactions found in newly
-  /// scanned blocks (`foundTransactions`) or ones that just became mined
-  /// (`minedTransaction`), and `sendToJs` drops every event until JavaScript
-  /// attaches a listener. A transaction whose state settled while nothing was
-  /// listening — mined while the app was closed, or during a failed sync — is
-  /// therefore neither newly found nor newly mined on the next launch, and
-  /// would never reach the app: it would sit at height 0, "pending", forever.
-  ///
-  /// JavaScript calls this from `subscribe()`, after its listeners are
-  /// attached, which is the only point at which delivery is guaranteed.
-  /// Re-sending transactions the app already knows is harmless: it updates
-  /// only the ones whose height or amount actually changed.
   @objc func emitExistingTransactions(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        do {
-          let txs = try await wallet.synchronizer.allTransactions()
-          await wallet.sendTxs(transactions: txs)
-          resolve(nil)
-        } catch {
-          reject(
-            "emitExistingTransactionsError", "Failed to read transactions", error)
-        }
-      } else {
-        reject(
-          "emitExistingTransactionsError", "Wallet does not exist", genericError)
-      }
+    run(resolve, reject, "emitExistingTransactionsError") {
+      try EdgeZcashClient.rustEmitExistingTransactions(alias: alias)
+      return nil
     }
   }
 
@@ -439,195 +191,36 @@ class RNZcash: RCTEventEmitter {
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        wallet.synchronizer.rewind(.birthday).sink(
-          receiveCompletion: { completion in
-            Task {
-              switch completion {
-              case .finished:
-                wallet.status = "STOPPED"
-                wallet.fullySynced = false
-                wallet.restart = true
-                wallet.initializeProcessorState()
-                wallet.cancellables.forEach { $0.cancel() }
-                try await wallet.synchronizer.start()
-                wallet.subscribe()
-                // Nothing is reported here. The app clears its own transaction
-                // list for a resync and rebuilds it from what we send, so sending
-                // the set back would refill the list it had just emptied, at the
-                // heights it held before the rewind. The event stream reports each
-                // transaction as the scan finds it again, and that is the only
-                // thing that should reintroduce one - including a send still
-                // waiting to be mined, which the app sees again when it is mined
-                // rather than being carried across every resync.
-                let balances = try await wallet.synchronizer.getAccountsBalances()
-                if let accountUUID = wallet.accountUUID,
-                  let accountBalance = balances[accountUUID]
-                {
-                  let data = wallet.createBalanceEventData(from: accountBalance)
-                  wallet.emit("BalanceEvent", data)
-                }
-
-                resolve(nil)
-              case .failure:
-                reject("RescanError", "Failed to rescan wallet", genericError)
-              }
-            }
-          }, receiveValue: { _ in }
-        ).store(in: &wallet.cancellables)
-      } else {
-        reject("RescanError", "Wallet does not exist", genericError)
-      }
+    run(resolve, reject, "RescanError") {
+      try EdgeZcashClient.rustRescan(alias: alias)
+      return nil
     }
   }
 
-  // MARK: Orchard -> Ironwood migration (NU6.3)
-  //
-  // The sweep is one ordinary proposal the app broadcasts through the normal
-  // createTransfer pipeline. The SDK spends every Orchard note to the account's
-  // own internal receiver with the fee chosen so no Orchard change remains,
-  // leaving Sapling and transparent funds untouched, and is deliberately
-  // all-or-nothing: post-NU6.3 the turnstile forbids adding value back to
-  // Orchard, so a remainder would be stranded in a pool the wallet is leaving.
-  //
-  // Errors reject with the ZcashError message rather than a generic error.
-
-  private func withMigrationAccount(
-    _ methodName: String,
-    _ alias: String,
-    _ resolve: @escaping RCTPromiseResolveBlock,
-    _ reject: @escaping RCTPromiseRejectBlock,
-    _ body: @escaping (WalletSynchronizer, AccountUUID) async throws -> Any?
-  ) {
-    Task {
-      guard let wallet = await synchronizerStore.get(alias) else {
-        reject(methodName, "Wallet does not exist", genericError)
-        return
-      }
-      guard let accountUUID = wallet.accountUUID else {
-        reject(methodName, "Account UUID not found", genericError)
-        return
-      }
-      do {
-        let result = try await body(wallet, accountUUID)
-        resolve(result)
-      } catch let error as ZcashError {
-        reject(methodName, error.message, error)
-      } catch {
-        reject(methodName, error.localizedDescription, error)
-      }
-    }
-  }
-
-  /// Proposes the Orchard-only sweep to the account's own address, resolving
-  /// the JS `ImmediateMigrationProposal`. Execute the returned proposal through
-  /// the ordinary `createTransfer` path.
   @objc func proposeOrchardToIronwoodMigration(
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    withMigrationAccount("proposeOrchardToIronwoodMigration", alias, resolve, reject) {
-      wallet, accountUUID in
-      let proposal = try await wallet.synchronizer.proposeOrchardToIronwoodMigration(
-        accountUUID: accountUUID)
-      let feeZatoshi = proposal.totalFeeRequired().amount
-
-      // The proposal reports its fee but not its payment value, so the amount
-      // crossing is derived from what it consumes: the whole spendable Orchard
-      // balance, minus that fee. Fail rather than quote a figure we cannot
-      // source — it is displayed and then locked into the send scene.
-      let balances = try await wallet.synchronizer.getAccountsBalances()
-      guard let orchardAvailable = balances[accountUUID]?.orchardBalance.spendableValue.amount
-      else {
-        throw NSError(
-          domain: "proposeOrchardToIronwoodMigration", code: -1,
-          userInfo: [
-            NSLocalizedDescriptionKey:
-              "Balances are not available yet; cannot quote the migration amount"
-          ])
-      }
-
-      // The SDK built a fundable proposal, so a non-positive remainder means the
-      // balance we read disagrees with the notes the proposal selected — stale
-      // balances, or a differing notion of "spendable". Clamping that to zero
-      // would quote a zero-amount migration against a real fee, and the app
-      // locks this figure into the send scene. Fail loudly instead.
-      let amountZatoshi = orchardAvailable - feeZatoshi
-      guard amountZatoshi > 0 else {
-        throw NSError(
-          domain: "proposeOrchardToIronwoodMigration", code: -1,
-          userInfo: [
-            NSLocalizedDescriptionKey:
-              "Orchard balance (\(orchardAvailable)) does not cover the migration fee (\(feeZatoshi))"
-          ])
-      }
-
-      return [
-        "amountZatoshi": String(amountZatoshi),
-        "feeZatoshi": String(feeZatoshi),
-        "proposalBase64": try proposal.inner.serializedData().base64EncodedString(),
-      ] as NSDictionary
+    run(resolve, reject, "proposeOrchardToIronwoodMigration") {
+      try EdgeZcashClient.rustProposeOrchardToIronwoodMigration(alias: alias)
     }
   }
 
-  /// The NU6.3 activation height for the named network, or null when it has
-  /// none. Served from consensus constants (ZIP 258) because no SDK exposes an
-  /// Ironwood accessor; stateless, so it needs no synchronizer.
   @objc func ironwoodActivationHeight(
     _ networkName: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    switch networkName {
-    case "mainnet":
-      resolve(3_428_143)
-    case "testnet":
-      resolve(4_134_000)
-    default:
-      resolve(nil)
+    run(resolve, reject, "ironwoodActivationHeight") {
+      EdgeZcashClient.rustIronwoodActivationHeight(network: networkName)
     }
-  }
-
-
-  // Derivation Tool
-  private func getDerivationToolForNetwork(_ network: String) -> DerivationTool {
-    switch network {
-    case "testnet":
-      return DerivationTool(networkType: ZcashNetworkBuilder.network(for: .testnet).networkType)
-    default:
-      return DerivationTool(networkType: ZcashNetworkBuilder.network(for: .mainnet).networkType)
-    }
-  }
-
-  private func deriveUnifiedSpendingKey(_ seed: String, _ network: ZcashNetwork) throws
-    -> UnifiedSpendingKey
-  {
-    let derivationTool = DerivationTool(networkType: network.networkType)
-    let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
-    let spendingKey = try derivationTool.deriveUnifiedSpendingKey(
-      seed: seedBytes, accountIndex: Zip32AccountIndex(0))
-    return spendingKey
-  }
-
-  private func deriveUnifiedViewingKey(_ seed: String, _ network: ZcashNetwork) throws
-    -> UnifiedFullViewingKey
-  {
-    let spendingKey = try deriveUnifiedSpendingKey(seed, network)
-    let derivationTool = DerivationTool(networkType: network.networkType)
-    let viewingKey = try derivationTool.deriveUnifiedFullViewingKey(from: spendingKey)
-    return viewingKey
   }
 
   @objc func deriveViewingKey(
     _ seed: String, _ network: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    do {
-      let zcashNetwork = getNetworkParams(network)
-      let viewingKey = try deriveUnifiedViewingKey(seed, zcashNetwork)
-      resolve(viewingKey.stringEncoded)
-    } catch {
-      reject("DeriveViewingKeyError", "Failed to derive viewing key", error)
+    run(resolve, reject, "DeriveViewingKeyError") {
+      try EdgeZcashClient.rustDeriveViewingKey(mnemonicSeed: seed, network: network)
     }
   }
 
@@ -635,32 +228,13 @@ class RNZcash: RCTEventEmitter {
     _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    Task {
-      if let wallet = await synchronizerStore.get(alias) {
-        do {
-          guard let accountUUID = wallet.accountUUID else {
-            reject("deriveUnifiedAddress", "Account UUID not found", genericError)
-            return
-          }
-          let unifiedAddress = try await wallet.synchronizer.getUnifiedAddress(
-            accountUUID: accountUUID)
-          let saplingAddress = try await wallet.synchronizer.getSaplingAddress(
-            accountUUID: accountUUID)
-          let transparentAddress = try await wallet.synchronizer.getTransparentAddress(
-            accountUUID: accountUUID)
-          let addresses: NSDictionary = [
-            "unifiedAddress": unifiedAddress.stringEncoded,
-            "saplingAddress": saplingAddress.stringEncoded,
-            "transparentAddress": transparentAddress.stringEncoded,
-          ]
-          resolve(addresses)
-          return
-        } catch {
-          reject("deriveUnifiedAddress", "Failed to derive unified address", error)
-        }
-      } else {
-        reject("deriveUnifiedAddress", "Wallet does not exist", genericError)
-      }
+    run(resolve, reject, "deriveUnifiedAddress") {
+      let addresses = try EdgeZcashClient.rustDeriveUnifiedAddress(alias: alias)
+      return [
+        "unifiedAddress": addresses.unifiedAddress,
+        "saplingAddress": addresses.saplingAddress,
+        "transparentAddress": addresses.transparentAddress,
+      ] as NSDictionary
     }
   }
 
@@ -668,333 +242,22 @@ class RNZcash: RCTEventEmitter {
     _ address: String, _ network: String, resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    let derivationTool = getDerivationToolForNetwork(network)
-    if derivationTool.isValidUnifiedAddress(address)
-      || derivationTool.isValidSaplingAddress(address)
-      || derivationTool.isValidTransparentAddress(address)
-      || derivationTool.isValidTexAddress(address)
-    {
-      resolve(true)
-    } else {
-      resolve(false)
+    run(resolve, reject, "isValidAddress") {
+      EdgeZcashClient.rustIsValidAddress(address: address, network: network)
     }
   }
 
-  // Events
-  public func sendToJs(name: String, data: Any) {
-    if hasListeners {
-      self.sendEvent(withName: name, body: data)
+  @objc func poll(
+    _ alias: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    run(resolve, reject, "poll") {
+      let snap = try EdgeZcashClient.rustPoll(alias: alias)
+      return self.pollDictionary(snap)
     }
-  }
-
-  override func startObserving() {
-    hasListeners = true
-  }
-
-  override func stopObserving() {
-    hasListeners = false
   }
 
   override func supportedEvents() -> [String] {
     return ["BalanceEvent", "ErrorEvent", "StatusEvent", "TransactionEvent", "UpdateEvent"]
   }
-}
-
-class WalletSynchronizer: NSObject {
-  public var alias: String
-  public var accountUUID: AccountUUID?
-  public var synchronizer: SDKSynchronizer
-  var status: String
-  var emit: (String, Any) -> Void
-  var fullySynced: Bool
-  var restart: Bool
-  var processorState: ProcessorState
-  var cancellables: [AnyCancellable] = []
-
-  init(alias: String, initializer: Initializer, emitter: @escaping (String, Any) -> Void) throws {
-    self.alias = alias
-    self.synchronizer = SDKSynchronizer(initializer: initializer)
-    self.status = "STOPPED"
-    self.emit = emitter
-    self.fullySynced = false
-    self.restart = false
-    self.processorState = ProcessorState(
-      scanProgress: 0,
-      networkBlockHeight: 0
-    )
-  }
-
-  public func subscribe() {
-    self.synchronizer.stateStream
-      .sink(receiveValue: { [weak self] state in self?.updateSyncStatus(event: state) })
-      .store(in: &cancellables)
-    self.synchronizer.stateStream
-      .sink(receiveValue: { [weak self] state in self?.updateProcessorState(event: state) })
-      .store(in: &cancellables)
-    self.synchronizer.eventStream
-      .sink { SynchronizerEvent in
-        switch SynchronizerEvent {
-        case .minedTransaction(let transaction):
-          self.emitTxs(transactions: [transaction])
-        case .foundTransactions(let transactions, _):
-          self.emitTxs(transactions: transactions)
-        default:
-          return
-        }
-      }
-      .store(in: &cancellables)
-  }
-
-  func updateSyncStatus(event: SynchronizerState) {
-    var status = self.status
-
-    if !self.fullySynced {
-      switch event.internalSyncStatus {
-      case .syncing:
-        status = "SYNCING"
-        self.restart = false
-      case .synced:
-        if self.restart {
-          // The synchronizer emits "synced" status after starting a rescan. We need to ignore these.
-          return
-        }
-        status = "SYNCED"
-
-        self.fullySynced = true
-      case .error(let error):
-        let zcashError = error.toZcashError()
-        switch zcashError.code {
-        case .compactBlockProcessorCritical:
-          let data: NSDictionary = [
-            "alias": self.alias, "level": "critical", "message": zcashError.message,
-          ]
-          emit("ErrorEvent", data)
-        default:
-          let data: NSDictionary = [
-            "alias": self.alias, "level": "error", "message": zcashError.message,
-          ]
-          emit("ErrorEvent", data)
-        }
-      default:
-        break
-      }
-
-      if status == self.status { return }
-      self.status = status
-      let data: NSDictionary = ["alias": self.alias, "name": self.status]
-      emit("StatusEvent", data)
-    }
-  }
-
-  func updateProcessorState(event: SynchronizerState) {
-    updateBalanceState(event: event)
-
-    var scanProgress = 0.0
-
-    switch event.internalSyncStatus {
-    case .syncing(let progress, _):
-      // Report a 0-100 percentage but keep the decimal places (no floor) for
-      // granular progress.
-      scanProgress = Double(progress) * 100
-    case .synced:
-      scanProgress = 100.0
-    case .unprepared, .disconnected, .stopped:
-      scanProgress = 0.0
-    default:
-      return
-    }
-
-    if scanProgress == self.processorState.scanProgress
-      && event.latestBlockHeight == self.processorState.networkBlockHeight
-    {
-      return
-    }
-
-    self.processorState = ProcessorState(
-      scanProgress: scanProgress, networkBlockHeight: event.latestBlockHeight)
-    let data: NSDictionary = [
-      "alias": self.alias, "scanProgress": self.processorState.scanProgress,
-      "networkBlockHeight": self.processorState.networkBlockHeight,
-    ]
-    emit("UpdateEvent", data)
-  }
-
-  func initializeProcessorState() {
-    self.processorState = ProcessorState(
-      scanProgress: 0,
-      networkBlockHeight: 0
-    )
-  }
-
-  func createBalanceEventData(from accountBalance: AccountBalance) -> NSDictionary {
-    // Account exists, safely access the balance properties
-    let transparentBalance = accountBalance.unshielded
-    let shieldedBalance = accountBalance.saplingBalance
-    let orchardBalance = accountBalance.orchardBalance
-
-    let transparentAvailableZatoshi = transparentBalance
-    let transparentTotalZatoshi = transparentBalance
-
-    let saplingAvailableZatoshi = shieldedBalance.spendableValue
-    let saplingTotalZatoshi = shieldedBalance.total()
-
-    let orchardAvailableZatoshi = orchardBalance.spendableValue
-    let orchardTotalZatoshi = orchardBalance.total()
-
-    // Zero until the Ironwood (NU6.3) pool activates:
-    let ironwoodBalance = accountBalance.ironwoodBalance
-    let ironwoodAvailableZatoshi = ironwoodBalance.spendableValue
-    let ironwoodTotalZatoshi = ironwoodBalance.total()
-
-    return [
-      "alias": self.alias,
-      "transparentAvailableZatoshi": String(transparentAvailableZatoshi.amount),
-      "transparentTotalZatoshi": String(transparentTotalZatoshi.amount),
-      "saplingAvailableZatoshi": String(saplingAvailableZatoshi.amount),
-      "saplingTotalZatoshi": String(saplingTotalZatoshi.amount),
-      "orchardAvailableZatoshi": String(orchardAvailableZatoshi.amount),
-      "orchardTotalZatoshi": String(orchardTotalZatoshi.amount),
-      "ironwoodAvailableZatoshi": String(ironwoodAvailableZatoshi.amount),
-      "ironwoodTotalZatoshi": String(ironwoodTotalZatoshi.amount),
-    ] as NSDictionary
-  }
-
-  func updateBalanceState(event: SynchronizerState) {
-    guard let accountUUID = self.accountUUID else {
-      return
-    }
-
-    // Safely check if the account exists in the balances dictionary
-    guard let accountBalance = event.accountsBalances[accountUUID] else {
-      return
-    }
-
-    let data = createBalanceEventData(from: accountBalance)
-    emit("BalanceEvent", data)
-  }
-
-  func parseTx(tx: ZcashTransaction.Overview) async -> ConfirmedTx {
-    var confTx = ConfirmedTx(
-      minedHeight: tx.minedHeight ?? 0,
-      rawTransactionId: (tx.rawID.toHexStringTxId()),
-      blockTimeInSeconds: Int(tx.blockTime ?? 0),
-      value: String(describing: abs(tx.value.amount)),
-      isShielding: tx.isShielding,
-      isExpired: tx.isExpiredUmined ?? false
-    )
-    if tx.raw != nil {
-      confTx.raw = tx.raw!.hexEncodedString()
-    }
-    if tx.fee != nil {
-      confTx.fee = String(describing: abs(tx.fee!.amount))
-    }
-    if tx.isSentTransaction {
-      let recipients = await self.synchronizer.getRecipients(for: tx)
-      if recipients.count > 0 {
-        let addresses = recipients.compactMap {
-          if case .address(let address) = $0 {
-            return address
-          } else {
-            return nil
-          }
-        }
-        if addresses.count > 0 {
-          confTx.toAddress = addresses.first!.stringEncoded
-        }
-      }
-    }
-    if tx.memoCount > 0 {
-      let memos = (try? await self.synchronizer.getMemos(for: tx)) ?? []
-      let textMemos = memos.compactMap {
-        return $0.toString()
-      }
-      confTx.memos = textMemos
-    }
-    return confTx
-  }
-
-  /// Fire-and-forget: for the synchronizer's own event stream, where nothing is
-  /// waiting on the result.
-  func emitTxs(transactions: [ZcashTransaction.Overview]) {
-    Task {
-      await sendTxs(transactions: transactions)
-    }
-  }
-
-  /// The awaited form. `emitExistingTransactions` resolves its promise only
-  /// after this returns, so JavaScript's completion actually means the event
-  /// was sent - resolving off the detached Task above would report success
-  /// before any parsing had happened, and hide a failure inside it.
-  func sendTxs(transactions: [ZcashTransaction.Overview]) async {
-    var out: [NSDictionary] = []
-    for tx in transactions {
-      let confTx = await parseTx(tx: tx)
-      out.append(confTx.nsDictionary)
-    }
-
-    let data: NSDictionary = ["alias": self.alias, "transactions": NSArray(array: out)]
-    emit("TransactionEvent", data)
-  }
-}
-
-func foldTo16Bytes(_ bytes: [UInt8]) -> [UInt8] {
-  var out = [UInt8](repeating: 0, count: 16)
-  for (i, b) in bytes.enumerated() {
-    out[i % 16] ^= b
-  }
-  return out
-}
-
-// Local file helper funcs
-func documentsDirectoryHelper() throws -> URL {
-  try FileManager.default.url(
-    for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-}
-
-func cacheDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
-  try documentsDirectoryHelper()
-    .appendingPathComponent(
-      network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultCacheDbName,
-      isDirectory: false
-    )
-}
-
-func dataDbURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
-  try documentsDirectoryHelper()
-    .appendingPathComponent(
-      network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultDataDbName,
-      isDirectory: false
-    )
-}
-
-func torDirURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
-  try documentsDirectoryHelper()
-    .appendingPathComponent(
-      network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultTorDirName,
-      isDirectory: true
-    )
-}
-
-func spendParamsURLHelper(_ alias: String) throws -> URL {
-  try documentsDirectoryHelper().appendingPathComponent(alias + "sapling-spend.params")
-}
-
-func outputParamsURLHelper(_ alias: String) throws -> URL {
-  try documentsDirectoryHelper().appendingPathComponent(alias + "sapling-output.params")
-}
-
-func fsBlockDbRootURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
-  try documentsDirectoryHelper()
-    .appendingPathComponent(
-      network.constants.defaultDbNamePrefix + alias + ZcashSDK.defaultFsCacheName,
-      isDirectory: true
-    )
-}
-
-func generalStorageURLHelper(_ alias: String, _ network: ZcashNetwork) throws -> URL {
-  try documentsDirectoryHelper()
-    .appendingPathComponent(
-      network.constants.defaultDbNamePrefix + alias + "general_storage",
-      isDirectory: true
-    )
 }

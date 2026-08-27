@@ -1,10 +1,14 @@
 # Build output:
 /android/build/
+/android/src/main/jniLibs/
 /ios/libzcashlc.xcframework/
+/ios/libzcash.xcframework/
 /ios/ZCashLightClientKit/
 /ios/zcashlc.h
 /lib/
 /tmp/
+/rust/target/
+/rust/Generated/
 
 # Package managers:
 *.tgz

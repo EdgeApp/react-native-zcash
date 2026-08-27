@@ -19,16 +19,16 @@ Pod::Spec.new do |s|
     "ios/react-native-zcash-Bridging-Header.h",
     "ios/RNZcash.m",
     "ios/RNZcash.swift",
-    "ios/zcashlc.h",
-    "ios/ZCashLightClientKit/**/*.swift"
-  s.resource_bundles = {
-    "zcash-mainnet" => "ios/ZCashLightClientKit/Resources/checkpoints/mainnet/*.json",
-    "zcash-testnet" => "ios/ZCashLightClientKit/Resources/checkpoints/testnet/*.json"
+    "ios/EdgeZcashClient.swift",
+    "ios/zcash.swift"
+  s.vendored_frameworks = "ios/libzcash.xcframework"
+  s.pod_target_xcconfig = {
+    # CocoaPods copies the active xcframework slice here. Do not point at
+    # ios/ or the raw xcframework: both slices define module zcashFFI.
+    'SWIFT_INCLUDE_PATHS' => '"${PODS_XCFRAMEWORKS_BUILD_DIR}/react-native-zcash/Headers"',
+    'OTHER_LDFLAGS' => '-lc++'
   }
-  s.vendored_frameworks = "ios/libzcashlc.xcframework"
+  s.libraries = "c++"
 
-  s.dependency "MnemonicSwift", "~> 2.2"
-  s.dependency "gRPC-Swift", "~> 1.8"
-  s.dependency "SQLite.swift/standalone", "~> 0.14"
   s.dependency "React-Core"
 end

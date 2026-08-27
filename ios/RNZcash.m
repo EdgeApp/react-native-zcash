@@ -52,6 +52,12 @@ resolver:(RCTPromiseResolveBlock)resolve
 rejecter:(RCTPromiseRejectBlock)reject
 )
 
+RCT_EXTERN_METHOD(broadcastTransfer:(NSString *)alias
+:(NSString *)txid
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
+)
+
 RCT_EXTERN_METHOD(shieldFunds:(NSString *)alias
 :(NSString *)seed
 :(NSString *)memo
@@ -96,6 +102,11 @@ RCT_EXTERN_METHOD(proposeOrchardToIronwoodMigration:(NSString *)alias
 RCT_EXTERN_METHOD(ironwoodActivationHeight:(NSString *)networkName
   resolver:(RCTPromiseResolveBlock)resolve
   rejecter:(RCTPromiseRejectBlock)reject
+)
+
+RCT_EXTERN_METHOD(poll:(NSString *)alias
+resolver:(RCTPromiseResolveBlock)resolve
+rejecter:(RCTPromiseRejectBlock)reject
 )
 
 // Events
