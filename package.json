@@ -22,20 +22,11 @@
       "types": "./lib/react-native.d.ts",
       "default": "./lib/rnzcash.rn.js"
     },
-    "./node": {
-      "types": "./lib/node.d.ts",
-      "default": "./lib/src/node.js"
-    },
     "./rn": {
       "types": "./lib/react-native.d.ts",
       "default": "./lib/rnzcash.rn.js"
     },
     "./package.json": "./package.json"
-  },
-  "typesVersions": {
-    "*": {
-      "node": ["lib/node.d.ts"]
-    }
   },
   "files": [
     "/android/build.gradle",
@@ -44,17 +35,13 @@
     "/ios/",
     "/lib/",
     "/LICENSE",
-    "/node.d.ts",
-    "/node.js",
     "/package.json",
-    "/prebuilds/",
     "/react-native-zcash.podspec",
     "/README.md",
     "/src/"
   ],
   "scripts": {
     "build": "(cd android && gradle assemble -DheapDumpOnOutOfMemoryError=false)",
-    "build-native-host": "node -r sucrase/register ./scripts/build-native-host.ts",
     "build-native-android": "node -r sucrase/register ./scripts/build-native-android.ts",
     "build-native-ios": "node -r sucrase/register ./scripts/build-native-ios.ts",
     "fix-kotlin": "ktlint --format 'android/src/**/*.kt'",
@@ -63,8 +50,7 @@
     "lint": "eslint .",
     "precommit": "lint-staged && npm run prepare",
     "prepack": "npm run prepare",
-    "prepare": "husky install && rimraf lib && rollup -c && tsc",
-    "smoke-node": "node -r sucrase/register ./scripts/smoke-node.ts"
+    "prepare": "husky install && rimraf lib && rollup -c && tsc"
   },
   "lint-staged": {
     "*.{js,ts}": "eslint"

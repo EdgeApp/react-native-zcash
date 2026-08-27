@@ -27,7 +27,7 @@ napi = { version = "2.16", default-features = false, features = [
 napi-derive = { version = "2.16", optional = true }
 nonempty = "0.11"
 once_cell = "1"
-pepper-sync = { path = "/Users/paul/git/zingolib/pepper-sync" }
+pepper-sync = { git = "https://github.com/zingolabs/zingolib", rev = "9b19cdba1e92e6904ba5969a6205a6475ebbc9ae" }
 tempfile = "3"
 thiserror = { version = "2", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
@@ -43,8 +43,8 @@ zcash_keys = { version = "0.16.1", features = [
     "orchard",
 ] }
 zcash_protocol = "0.10.4"
-zingolib = { path = "/Users/paul/git/zingolib/zingolib", default-features = false }
-zingo-status = { path = "/Users/paul/git/zingolib/zingo-status" }
+zingolib = { git = "https://github.com/zingolabs/zingolib", rev = "9b19cdba1e92e6904ba5969a6205a6475ebbc9ae", default-features = false }
+zingo-status = { git = "https://github.com/zingolabs/zingolib", rev = "9b19cdba1e92e6904ba5969a6205a6475ebbc9ae" }
 zip32 = "0.2"
 
 [build-dependencies]
