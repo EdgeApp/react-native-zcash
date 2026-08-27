@@ -2005,6 +2005,7 @@ dependencies = [
 [[package]]
 name = "pepper-sync"
 version = "0.5.0"
+source = "git+https://github.com/zingolabs/zingolib?rev=9b19cdba1e92e6904ba5969a6205a6475ebbc9ae#9b19cdba1e92e6904ba5969a6205a6475ebbc9ae"
 dependencies = [
  "bip32",
  "byteorder",
@@ -4097,6 +4098,7 @@ dependencies = [
 [[package]]
 name = "zingo-memo"
 version = "0.1.1"
+source = "git+https://github.com/zingolabs/zingolib?rev=9b19cdba1e92e6904ba5969a6205a6475ebbc9ae#9b19cdba1e92e6904ba5969a6205a6475ebbc9ae"
 dependencies = [
  "zcash_address",
  "zcash_encoding",
@@ -4107,6 +4109,7 @@ dependencies = [
 [[package]]
 name = "zingo-net-diag"
 version = "0.1.0"
+source = "git+https://github.com/zingolabs/zingolib?rev=9b19cdba1e92e6904ba5969a6205a6475ebbc9ae#9b19cdba1e92e6904ba5969a6205a6475ebbc9ae"
 dependencies = [
  "serde",
 ]
@@ -4114,6 +4117,7 @@ dependencies = [
 [[package]]
 name = "zingo-netutils"
 version = "5.0.1"
+source = "git+https://github.com/zingolabs/zingolib?rev=9b19cdba1e92e6904ba5969a6205a6475ebbc9ae#9b19cdba1e92e6904ba5969a6205a6475ebbc9ae"
 dependencies = [
  "http",
  "lightwallet-protocol",
@@ -4129,6 +4133,7 @@ dependencies = [
 [[package]]
 name = "zingo-price"
 version = "0.1.0"
+source = "git+https://github.com/zingolabs/zingolib?rev=9b19cdba1e92e6904ba5969a6205a6475ebbc9ae#9b19cdba1e92e6904ba5969a6205a6475ebbc9ae"
 dependencies = [
  "byteorder",
  "zcash_encoding",
@@ -4137,6 +4142,7 @@ dependencies = [
 [[package]]
 name = "zingo-status"
 version = "0.2.1"
+source = "git+https://github.com/zingolabs/zingolib?rev=9b19cdba1e92e6904ba5969a6205a6475ebbc9ae#9b19cdba1e92e6904ba5969a6205a6475ebbc9ae"
 dependencies = [
  "byteorder",
  "zcash_protocol",
@@ -4154,6 +4160,7 @@ dependencies = [
 [[package]]
 name = "zingolib"
 version = "5.0.0"
+source = "git+https://github.com/zingolabs/zingolib?rev=9b19cdba1e92e6904ba5969a6205a6475ebbc9ae#9b19cdba1e92e6904ba5969a6205a6475ebbc9ae"
 dependencies = [
  "append-only-vec",
  "bech32",
