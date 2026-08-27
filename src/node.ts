@@ -117,7 +117,7 @@ export class Synchronizer {
     return parseJsonObject(raw) as ProposalSuccess
   }
 
-  async proposeFulfillingPaymentUri(
+  async proposeFulfillingPaymentURI(
     paymentUri: string
   ): Promise<ProposalSuccess> {
     const raw = await this.addon.proposeFulfillingPaymentUri(
