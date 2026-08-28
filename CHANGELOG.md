@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.4 (2026-08-28)
+
 - fixed: Restore the vendored iOS SDK (Swift sources and xcframework) missing from the 0.13.3 npm package. npm's prepack step was skipped by the publishing machine's ignore-scripts hardening, so 0.13.3 shipped without its native payload and iOS builds failed with missing SDK types.
 
 ## 0.13.3 (2026-08-27)
