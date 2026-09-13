@@ -21,6 +21,26 @@ pod 'CNIOWindows', :modular_headers => true
 pod 'sqlite3', :modular_headers => true
 ```
 
+On Android, the consuming app must use minimum SDK 27 or higher and enable core-library desugaring required by the current Zcash Android SDK dependency:
+
+```groovy
+android {
+  defaultConfig {
+    minSdkVersion 27
+  }
+
+  compileOptions {
+    coreLibraryDesugaringEnabled true
+  }
+}
+
+dependencies {
+  coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+}
+```
+
+These settings belong in the consuming application's Android module.
+
 On the Android side, you may need to configure an explicit Kotlin version, so all your native dependencies will be compatible with one another. Simply define `kotlinVersion` in your `android/build.gradle` file:
 
 ```groovy
