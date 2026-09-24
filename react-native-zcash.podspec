@@ -16,6 +16,7 @@ Pod::Spec.new do |s|
     :tag => "v#{s.version}"
   }
   s.source_files =
+    "ios/CancellationSafeStream.swift",
     "ios/react-native-zcash-Bridging-Header.h",
     "ios/RNZcash.m",
     "ios/RNZcash.swift",
