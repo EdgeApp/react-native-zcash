@@ -5,6 +5,8 @@
 /ios/zcashlc.h
 /lib/
 /tmp/
+/ios-tests/.build/
+/ios-tests/.swiftpm/
 
 # Package managers:
 *.tgz

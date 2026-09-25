@@ -227,7 +227,7 @@ async function copySwift(): Promise<void> {
         `public static func from(decimal: Foundation.Decimal) -> Zatoshi`
       )
 
-    await toDisklet.setText(file, fixed)
+    await toDisklet.setText(file, guardResponseStreams(file, fixed))
   }
 
   // Copy the Rust header into the Swift location:
@@ -237,6 +237,46 @@ async function copySwift(): Promise<void> {
       'tmp/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/Headers/zcashlc.h'
     )
   )
+}
+
+/**
+ * Routes every gRPC response stream the SDK consumes through
+ * `cancellationSafeResponses()` (ios/CancellationSafeStream.swift), since the
+ * gRPC-Swift version CocoaPods provides can crash when the task iterating one
+ * of these streams is cancelled.
+ */
+function guardResponseStreams(file: string, text: string): string {
+  if (!file.endsWith('/LightWalletGRPCService.swift')) return text
+
+  // Each streaming RPC starts as `let stream = compactTxStreamer.getX(...)`
+  // and is read through `stream.makeAsyncIterator()`. The `makeGetXCall`
+  // variant returns the call itself, which the wrapper can cancel:
+  const calls = /let stream = compactTxStreamer\.get(\w+)\(/g
+  const iterators = /var iterator = stream\.makeAsyncIterator\(\)/g
+  const callCount = text.match(calls)?.length ?? 0
+  const iteratorCount = text.match(iterators)?.length ?? 0
+  const otherIterations =
+    text.match(/\.makeAsyncIterator\(\)|for try await/g)?.length ?? 0
+
+  // If an SDK update changes this shape, stop rather than ship the crash:
+  if (
+    callCount === 0 ||
+    callCount !== iteratorCount ||
+    otherIterations !== iteratorCount
+  ) {
+    throw new Error(
+      `${file} no longer matches the response stream shape guardResponseStreams expects ` +
+        `(${callCount} calls, ${iteratorCount} iterators, ${otherIterations} iterations). ` +
+        `Update the rewrite so every response stream goes through cancellationSafeResponses().`
+    )
+  }
+
+  return text
+    .replace(calls, 'let stream = compactTxStreamer.makeGet$1Call(')
+    .replace(
+      iterators,
+      'var iterator = stream.cancellationSafeResponses().makeAsyncIterator()'
+    )
 }
 
 /**
