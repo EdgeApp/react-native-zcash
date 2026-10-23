@@ -1,0 +1,13 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index aff8830..8f6ebce 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -24,7 +24,7 @@ voting-crypto-deps = { version = "=0.2.4", default-features = false }
+ zcash_protocol = { version = "2.0.0", package = "zakura-protocol", default-features = false }
+ # Pre-release equality pin: the LRZ backend tracks the librustzcash NU7
+ # pre-release stack, whose pre-releases make no compatibility promise.
+-lrz_zcash_protocol = { version = "=0.11.0-pre.0", package = "zcash_protocol" }
++lrz_zcash_protocol = { version = "=0.11.0", package = "zcash_protocol" }
+ 
+ # The published Zakura 2.0 crates require the pre-release `bip32 0.6.0-pre.1`
+ # stack, which cannot share a lockfile with the stable `bip32 0.6` that the

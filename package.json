@@ -19,6 +19,7 @@
   "types": "lib/src/react-native.d.ts",
   "files": [
     "/android/build.gradle",
+    "/android/maven/",
     "/android/src/",
     "/CHANGELOG.md",
     "/ios/",

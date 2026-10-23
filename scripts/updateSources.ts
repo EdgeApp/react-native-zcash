@@ -6,7 +6,13 @@
 import { execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { deepList, justFiles, makeNodeDisklet, navigateDisklet } from 'disklet'
-import { existsSync, mkdirSync, readFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 
 import { copyCheckpoints } from './copyCheckpoints'
@@ -17,141 +23,160 @@ const tmp = join(__dirname, '../tmp')
 async function main(): Promise<void> {
   if (!existsSync(tmp)) mkdirSync(tmp)
   await downloadSources()
-  await rebuildXcframework()
+  await buildXcframework()
+  await buildAndroidSdk()
   await copySwift()
   await copyCheckpoints(disklet)
 }
 
-// The Swift SDK commit to vendor: the 2.7.0-rc.4 tag, the release the Zcash team
-// confirmed production-ready for Ironwood (NU6.3). Pinned by commit rather than
-// tag name so the checkout is immutable even if the tag is ever moved.
-const ZCASH_SWIFT_SDK_COMMIT = 'fb9f6cf46fa725efa6cb9e646e13a94f05a293bf'
+// The Swift SDK commit to vendor: zodl-inc/zodl-swift-wallet-sdk main, the
+// first Swift SDK source built on the NU7 librustzcash crates. ECC's
+// zcash-swift-wallet-sdk is end of life and never gained NU7, and ZODL's only
+// release (5.0.0) predates the NU7 crates, so there is no release asset to
+// download yet. Pinned by commit so the checkout is immutable. Once ZODL tags
+// an NU7 release, repoint this at that tag and restore the prebuilt download
+// (see git history for the download-and-verify variant of this script).
+const ZODL_SWIFT_SDK_COMMIT = '03a779959d87a8e622f178bd27db8e5f8114b112'
 
-// SHA-256 of the libzcashlc.xcframework.zip this package links.
-//
-// The asset is not addressed by a URL written here: which zip to fetch, and its
-// checksum, come from the pinned checkout's own binaryTarget (readBinaryTarget
-// below), so the FFI can never drift from the SDK source we vendor. This
-// constant is the reviewed copy of that checksum - the build stops if the two
-// disagree, so bumping ZCASH_SWIFT_SDK_COMMIT has to change the native code
-// deliberately rather than silently. The download is checked against it too,
-// before anything is unpacked, so a tampered or swapped release asset fails the
-// build instead of injecting attacker-controlled native code.
-//
-// To refresh it, take the `checksum:` from the new commit's Package.swift, or:
-//   curl -fL <url> | shasum -a 256
-const LIBZCASHLC_XCFRAMEWORK_SHA256 =
-  'c012c2b682191f027c1874ecde84adeeaef26dbb3e827dd5f29deb0eb8af0ef2'
+// The Android SDK 5.2.2 release commit. Maven Central has this release, but
+// it pins the pre-release NU7 crates with no mainnet activation height, so we
+// rebuild it from source with the patches below:
+const ZODL_ANDROID_SDK_COMMIT = '42ebb78dc55a6822a54a4979a0ccbc461a928f95'
 
-function downloadSources(): void {
-  getRepo(
-    'ZcashLightClientKit',
-    'https://github.com/zcash/zcash-swift-wallet-sdk.git',
-    ZCASH_SWIFT_SDK_COMMIT
-  )
-  // libzcashlc is no longer a separate package as of SDK 2.5.x — it ships as a
-  // release-asset zip named by the checkout's own binaryTarget, downloaded in
-  // rebuildXcframework(). Both read that one declaration, so SwiftPM builds of
-  // the checkout (the vendored-deps wrapper) link the binary this package ships.
+// The version we publish the rebuilt Android SDK under, into android/maven.
+// android/build.gradle must depend on this same version:
+const ZODL_ANDROID_SDK_VERSION = '5.2.2-edge-nu7'
+
+// Both SDKs depend on these through `[patch.crates-io]`,
+// so they also need porting to the final NU7 crates:
+const ZCASH_VOTING_COMMIT = '9bb376295431a3c73a260ed6bbbcc870284f2db3'
+const SLIPSTREAM_CRATE = {
+  name: 'zodl-slipstream',
+  version: '0.4.0-pre.1',
+  sha256: '635eb2eb5a8360239c4cb45262065b8aa59f64ce141005714f6b5a73329fde4f'
 }
 
 /**
- * Downloads and re-packages the libzcashlc XCFramework.
+ * Downloads the SDK sources and ports them to the final NU7 crates
+ * (zcash_protocol 0.11.0, with mainnet NU7 activation at 3,543,405).
  *
- * As of SDK 2.5.x the FFI ships as a release-asset zip on the Swift SDK repo
- * (no longer a separate zcash-light-client-ffi package).
- *
- * An XCFramework can either include a static library (.a)
- * or a dynamically-linked library (.framework).
- * The published XCFramework stuffs a static library into a dynamic framework,
- * which doesn't work correctly.
- * We fix this by simply re-building the XCFramework.
+ * The patches in scripts/patches repin the librustzcash crates to their
+ * final releases, adapt to the API changes between the pre-release and the
+ * final crates, and pin Rust 1.97.1. Delete them once ZODL ships SDKs on the
+ * final crates.
  */
-async function rebuildXcframework(): Promise<void> {
-  // Take the asset to download from the pinned checkout itself, so the FFI is
-  // always the one this SDK source was released against:
-  const { url: zipUrl, checksum } = await readBinaryTarget()
-  if (checksum !== LIBZCASHLC_XCFRAMEWORK_SHA256) {
-    throw new Error(
-      `The pinned SDK checkout links libzcashlc ${checksum}, but this package pins ${LIBZCASHLC_XCFRAMEWORK_SHA256}. ` +
-        `Bumping ZCASH_SWIFT_SDK_COMMIT changes the native FFI too - review the new release (${zipUrl}) ` +
-        `and update LIBZCASHLC_XCFRAMEWORK_SHA256 to match.`
-    )
+async function downloadSources(): Promise<void> {
+  getRepo(
+    'zodl-swift-wallet-sdk',
+    'https://github.com/zodl-inc/zodl-swift-wallet-sdk.git',
+    ZODL_SWIFT_SDK_COMMIT
+  )
+  getRepo(
+    'zodl-android-wallet-sdk',
+    'https://github.com/zodl-inc/zodl-android-wallet-sdk.git',
+    ZODL_ANDROID_SDK_COMMIT
+  )
+  getRepo(
+    'zcash_voting',
+    'https://github.com/zodl-inc/zcash_voting.git',
+    ZCASH_VOTING_COMMIT
+  )
+  await getCrate(SLIPSTREAM_CRATE)
+
+  applyPatch('zodl-swift-wallet-sdk', 'zodl-swift-wallet-sdk.patch')
+  applyPatch('zodl-android-wallet-sdk', 'zodl-android-wallet-sdk.patch')
+  applyPatch('zcash_voting', 'zcash_voting.patch')
+  applyPatch(
+    `${SLIPSTREAM_CRATE.name}-${SLIPSTREAM_CRATE.version}`,
+    'zodl-slipstream.patch'
+  )
+  // libzcashlc lives in the same repo: buildXcframework() compiles it from
+  // the checkout's own Rust source, so the FFI always matches the Swift code.
+}
+
+/**
+ * Builds the libzcashlc XCFramework from the SDK's in-repo Rust source.
+ *
+ * Upstream releases ship a prebuilt libzcashlc.xcframework.zip release asset,
+ * but the pinned pre-release commit has no release, so we compile the
+ * staticlib with cargo for each Apple target and assemble the XCFramework
+ * ourselves. cbindgen (run by the crate's build.rs) generates the C header at
+ * target/Headers/zcashlc.h.
+ *
+ * Note: the simulator slice is arm64-only (upstream's prebuilt is a universal
+ * arm64+x86_64 simulator binary). Add the x86_64-apple-ios target here if an
+ * Intel-mac simulator build is ever needed.
+ */
+async function buildXcframework(): Promise<void> {
+  const sdkPath = join(tmp, 'zodl-swift-wallet-sdk')
+  const targets = ['aarch64-apple-ios', 'aarch64-apple-ios-sim']
+
+  // Match the app's minimum iOS version instead of the host SDK's default,
+  // so the linker doesn't warn about every object file:
+  process.env.IPHONEOS_DEPLOYMENT_TARGET = '15.0'
+
+  for (const target of targets) {
+    console.log(`Building libzcashlc for ${target}...`)
+    loudExec(sdkPath, ['rustup', 'target', 'add', target])
+    loudExec(sdkPath, [
+      'cargo',
+      'build',
+      '--locked',
+      '--release',
+      '--target',
+      target
+    ])
   }
-
-  // Download the prebuilt libzcashlc XCFramework from the SDK's GitHub release.
-  console.log('Downloading libzcashlc XCFramework...')
-  const zipPath = join(tmp, 'libzcashlc.xcframework.zip')
-  loudExec(tmp, ['curl', '--fail', '--location', '--output', zipPath, zipUrl])
-
-  // Verify the downloaded asset against the pinned SHA-256 before unpacking it,
-  // so a tampered/replaced upstream release can't inject native code into the build.
-  const actualSha256 = createHash('sha256')
-    .update(readFileSync(zipPath))
-    .digest('hex')
-  if (actualSha256 !== LIBZCASHLC_XCFRAMEWORK_SHA256) {
-    throw new Error(
-      `libzcashlc.xcframework.zip integrity check failed: expected ${LIBZCASHLC_XCFRAMEWORK_SHA256}, got ${actualSha256}`
-    )
-  }
-
-  await disklet.delete('tmp/libzcashlc.xcframework')
-  loudExec(tmp, ['unzip', '-q', '-o', zipPath])
 
   console.log('Creating XCFramework...')
   await disklet.delete('ios/libzcashlc.xcframework')
-
-  // Extract the static libraries:
-  await disklet.setData(
-    'tmp/lib/ios-simulator/libzcashlc.a',
-    await disklet.getData(
-      'tmp/libzcashlc.xcframework/ios-arm64_x86_64-simulator/libzcashlc.framework/libzcashlc'
-    )
-  )
-  await disklet.setData(
-    'tmp/lib/ios/libzcashlc.a',
-    await disklet.getData(
-      'tmp/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/libzcashlc'
-    )
-  )
-
-  // Build the XCFramework:
   loudExec(tmp, [
     'xcodebuild',
     '-create-xcframework',
     '-library',
-    join(__dirname, '../tmp/lib/ios-simulator/libzcashlc.a'),
+    join(sdkPath, 'target/aarch64-apple-ios-sim/release/libzcashlc.a'),
     '-library',
-    join(__dirname, '../tmp/lib/ios/libzcashlc.a'),
+    join(sdkPath, 'target/aarch64-apple-ios/release/libzcashlc.a'),
     '-output',
     join(__dirname, '../ios/libzcashlc.xcframework')
   ])
 }
 
-interface BinaryTarget {
-  url: string
-  checksum: string
-}
-
 /**
- * Reads the libzcashlc binaryTarget out of the pinned checkout's Package.swift,
- * where upstream declares the FFI build that matches this SDK source. Reading it
- * instead of repeating the release tag here is what makes a source/binary
- * mismatch unrepresentable: there is only one place the pair is written down.
+ * Builds the Android SDK from source and publishes it into android/maven,
+ * a local Maven repository that ships inside our package.
+ *
+ * Needs the Android SDK and NDK (the version in the SDK's gradle.properties).
  */
-async function readBinaryTarget(): Promise<BinaryTarget> {
-  const path = 'tmp/ZcashLightClientKit/Package.swift'
-  const text = await disklet.getText(path)
-  // The file declares exactly one binaryTarget, as a url/checksum pair. It sits
-  // in the else branch of upstream's local-FFI switch, so it is in the text
-  // whether or not a LocalPackages checkout happens to be active:
-  const match = text.match(
-    /\.binaryTarget\([^)]*?url:\s*"([^"]+)"[^)]*?checksum:\s*"([0-9a-f]{64})"/
-  )
-  if (match == null) {
-    throw new Error(`Cannot find the libzcashlc binaryTarget in ${path}`)
+async function buildAndroidSdk(): Promise<void> {
+  const sdkPath = join(tmp, 'zodl-android-wallet-sdk')
+  const targets = [
+    'aarch64-linux-android',
+    'armv7-linux-androideabi',
+    'i686-linux-android',
+    'x86_64-linux-android'
+  ]
+
+  for (const target of targets) {
+    loudExec(sdkPath, ['rustup', 'target', 'add', target])
   }
-  return { url: match[1], checksum: match[2] }
+
+  const gradleArgs = [
+    '--no-daemon',
+    `-PLIBRARY_VERSION=${ZODL_ANDROID_SDK_VERSION}`,
+    '-PIS_SNAPSHOT=false',
+    `-Dmaven.repo.local=${join(__dirname, '../android/maven')}`
+  ]
+
+  // The SDK's merge-JNI task does not wait for the Rust build when
+  // publishing, so build the native libraries in their own pass first,
+  // or the backend AAR ships without them:
+  console.log('Building the Android native libraries...')
+  loudExec(sdkPath, ['./gradlew', ...gradleArgs, ':backend-lib:cargoBuild'])
+
+  console.log('Publishing the Android SDK...')
+  await disklet.delete('android/maven')
+  loudExec(sdkPath, ['./gradlew', ...gradleArgs, 'publishToMavenLocal'])
 }
 
 /**
@@ -161,11 +186,11 @@ async function copySwift(): Promise<void> {
   console.log('Copying swift sources...')
   const fromDisklet = navigateDisklet(
     disklet,
-    'tmp/ZCashLightClientKit/Sources'
+    'tmp/zodl-swift-wallet-sdk/Sources/ZODLSwiftWalletSDK'
   )
-  const toDisklet = navigateDisklet(disklet, 'ios')
-  await toDisklet.delete('ZCashLightClientKit/')
-  const files = justFiles(await deepList(fromDisklet, 'ZCashLightClientKit/'))
+  const toDisklet = navigateDisklet(disklet, 'ios/ZCashLightClientKit')
+  await toDisklet.delete('')
+  const files = justFiles(await deepList(fromDisklet, ''))
 
   for (const file of files) {
     const text = await fromDisklet.getText(file)
@@ -189,6 +214,11 @@ async function copySwift(): Promise<void> {
       )
       .replace(/:\s*ConfirmationsPolicy\s*=/g, ': SwiftConfirmationsPolicy =')
       .replace(/\bConfirmationsPolicy\s*:/g, 'SwiftConfirmationsPolicy:')
+      .replace(
+        /(confirmationsPolicy:\s*)ConfirmationsPolicy\)/g,
+        '$1SwiftConfirmationsPolicy)'
+      )
+      .replace(/->\s*ConfirmationsPolicy\?/g, '-> SwiftConfirmationsPolicy?')
       .replace(/libzcashlc\.ConfirmationsPolicy/g, 'ConfirmationsPolicy')
 
       // Replace serializedBytes with serializedData
@@ -222,6 +252,9 @@ async function copySwift(): Promise<void> {
       // This block of code uses "Bundle.module" too,
       // but we can just delete it since phone builds don't need it:
       .replace(/static let macOS = BundleCheckpointURLProvider.*}\)/s, '')
+      // CocoaPods names the module after the pod, so module-qualified
+      // free-function calls need the pod's module name:
+      .replace(/\bZODLSwiftWalletSDK\.(?=[a-z])/g, 'react_native_zcash.')
       .replace(
         `public static func from(decimal: Decimal) -> Zatoshi`,
         `public static func from(decimal: Foundation.Decimal) -> Zatoshi`
@@ -230,13 +263,58 @@ async function copySwift(): Promise<void> {
     await toDisklet.setText(file, fixed)
   }
 
-  // Copy the Rust header into the Swift location:
+  // Copy the cbindgen-generated Rust header into the Swift location:
   await disklet.setText(
     'ios/zcashlc.h',
-    await disklet.getText(
-      'tmp/libzcashlc.xcframework/ios-arm64/libzcashlc.framework/Headers/zcashlc.h'
-    )
+    await disklet.getText('tmp/zodl-swift-wallet-sdk/target/Headers/zcashlc.h')
   )
+}
+
+/**
+ * Downloads a crate from crates.io, verifies its hash,
+ * and extracts a fresh copy into tmp.
+ */
+async function getCrate(crate: {
+  name: string
+  version: string
+  sha256: string
+}): Promise<void> {
+  const { name, version, sha256 } = crate
+  const archivePath = join(tmp, `${name}-${version}.crate`)
+
+  if (!existsSync(archivePath)) {
+    console.log(`Downloading ${name}...`)
+    const uri = `https://static.crates.io/crates/${name}/${name}-${version}.crate`
+    const response = await fetch(uri)
+    if (!response.ok) throw new Error(`Could not fetch ${uri}`)
+    writeFileSync(archivePath, Buffer.from(await response.arrayBuffer()))
+  }
+
+  const hash = createHash('sha256')
+    .update(readFileSync(archivePath))
+    .digest('hex')
+  if (hash !== sha256) {
+    unlinkSync(archivePath)
+    throw new Error(`${name}-${version}.crate has hash ${hash}`)
+  }
+
+  // Extract a clean copy, since applyPatch modifies it:
+  await disklet.delete(`tmp/${name}-${version}`)
+  loudExec(tmp, ['tar', 'xzf', archivePath])
+}
+
+/**
+ * Applies a patch from scripts/patches to a directory in tmp.
+ */
+function applyPatch(name: string, patch: string): void {
+  console.log(`Patching ${name}...`)
+  execFileSync('git', ['apply', join(__dirname, 'patches', patch)], {
+    cwd: join(tmp, name),
+    // Keep git from treating our own repo as the patch target
+    // when the directory is not a checkout (the crate):
+    env: { ...process.env, GIT_CEILING_DIRECTORIES: tmp },
+    stdio: 'inherit'
+  })
 }
 
 /**
@@ -271,6 +349,9 @@ function getRepo(name: string, uri: string, hash: string): void {
   // Checkout:
   console.log(`Checking out ${name}...`)
   loudExec(path, ['git', 'checkout', '-f', hash])
+
+  // Remove files left by an earlier patch, but keep ignored build output:
+  loudExec(path, ['git', 'clean', '-fd'])
 }
 
 function hasCommit(path: string, hash: string): boolean {

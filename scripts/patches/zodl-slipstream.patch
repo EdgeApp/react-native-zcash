@@ -1,0 +1,102 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 3217bf3..6df432a 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -127,11 +127,11 @@ default-features = false
+ package = "sapling-crypto"
+ 
+ [dependencies.schemerz]
+-version = "0.2"
++version = "0.3"
+ optional = true
+ 
+ [dependencies.schemerz-rusqlite]
+-version = "0.370"
++version = "0.371"
+ optional = true
+ 
+ [dependencies.secrecy]
+@@ -171,7 +171,7 @@ version = "0.14"
+ version = "0.1"
+ 
+ [dependencies.transparent]
+-version = "=0.11.0-pre.1"
++version = "=0.11.0"
+ default-features = false
+ package = "zcash_transparent"
+ 
+@@ -180,10 +180,10 @@ version = "1"
+ optional = true
+ 
+ [dependencies.zcash_address]
+-version = "=0.14.0-pre.1"
++version = "=0.14.0"
+ 
+ [dependencies.zcash_client_backend]
+-version = "=0.25.0-pre.1"
++version = "=0.25.0"
+ features = [
+     "lightwalletd-tonic-tls-webpki-roots",
+     "orchard",
+@@ -193,7 +193,7 @@ features = [
+ ]
+ 
+ [dependencies.zcash_client_sqlite]
+-version = "=0.23.0-pre.1"
++version = "=0.23.0"
+ features = [
+     "orchard",
+     "transparent-inputs",
+@@ -203,17 +203,17 @@ features = [
+ optional = true
+ 
+ [dependencies.zcash_keys]
+-version = "=0.17.0-pre.1"
++version = "=0.17.0"
+ features = ["orchard"]
+ 
+ [dependencies.zcash_note_encryption]
+ version = "0.5.1"
+ 
+ [dependencies.zcash_primitives]
+-version = "=0.31.0-pre.1"
++version = "=0.31.0"
+ 
+ [dependencies.zcash_protocol]
+-version = "=0.11.0-pre.0"
++version = "=0.11.0"
+ 
+ [dependencies.zcash_script]
+ version = "0.6"
+diff --git a/src/persist.rs b/src/persist.rs
+index 673280b..26b0ee8 100644
+--- a/src/persist.rs
++++ b/src/persist.rs
+@@ -2412,6 +2412,13 @@ impl WalletWrite for SparseFacade<'_> {
+     ) -> Result<(), <Self as WalletRead>::Error> {
+         self.inner.delete_account(account)
+     }
++    fn set_account_name(
++        &mut self,
++        account: <Self as WalletRead>::AccountId,
++        name: &str,
++    ) -> Result<(), <Self as WalletRead>::Error> {
++        self.inner.set_account_name(account, name)
++    }
+     fn get_next_available_address(
+         &mut self,
+         account: <Self as WalletRead>::AccountId,
+@@ -3138,6 +3145,13 @@ impl WalletWrite for WriteBehindFacade {
+     ) -> Result<(), <Self as WalletRead>::Error> {
+         Err(unvirtualized("delete_account"))
+     }
++    fn set_account_name(
++        &mut self,
++        _account: <Self as WalletRead>::AccountId,
++        _name: &str,
++    ) -> Result<(), <Self as WalletRead>::Error> {
++        Err(unvirtualized("set_account_name"))
++    }
+     fn get_next_available_address(
+         &mut self,
+         _account: <Self as WalletRead>::AccountId,
