@@ -61,7 +61,10 @@ class RNZcashModule(
                 val network = networks.getOrDefault(networkName, ZcashNetwork.Mainnet)
                 val endpoint = LightWalletEndpoint(defaultHost, defaultPort, true)
                 val seedPhrase = SeedPhrase.new(seed)
-                val initMode = if (newWallet) WalletInitMode.NewWallet else WalletInitMode.ExistingWallet
+                // NewWallet seeds the account near the chain tip and ignores the birthday, which hides the
+                // history of a wallet opened on a fresh install. Restore from the birthday instead, as the
+                // iOS SDK does whenever a birthday is passed.
+                val initMode = if (newWallet) WalletInitMode.RestoreWallet else WalletInitMode.ExistingWallet
                 if (!synchronizerMap.containsKey(alias)) {
                     synchronizerMap[alias] =
                         Synchronizer.new(
@@ -222,35 +225,7 @@ class RNZcashModule(
                     }
                 }
                 wallet.walletBalances.collectWith(scope) { balancesMap ->
-                    val accountBalance = balancesMap?.values?.firstOrNull()
-                    val transparentBalance = accountBalance?.unshielded
-                    val saplingBalances = accountBalance?.sapling
-                    val orchardBalances = accountBalance?.orchard
-
-                    val transparentAvailableZatoshi = transparentBalance ?: Zatoshi(0L)
-                    val transparentTotalZatoshi = transparentBalance ?: Zatoshi(0L)
-
-                    val saplingAvailableZatoshi = saplingBalances?.available ?: Zatoshi(0L)
-                    val saplingTotalZatoshi = saplingBalances?.total ?: Zatoshi(0L)
-
-                    val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
-                    val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
-
-                    val ironwoodBalances = accountBalance?.ironwood
-                    val ironwoodAvailableZatoshi = ironwoodBalances?.available ?: Zatoshi(0L)
-                    val ironwoodTotalZatoshi = ironwoodBalances?.total ?: Zatoshi(0L)
-
-                    sendEvent("BalanceEvent") { args ->
-                        args.putString("alias", alias)
-                        args.putString("transparentAvailableZatoshi", transparentAvailableZatoshi.value.toString())
-                        args.putString("transparentTotalZatoshi", transparentTotalZatoshi.value.toString())
-                        args.putString("saplingAvailableZatoshi", saplingAvailableZatoshi.value.toString())
-                        args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
-                        args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
-                        args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
-                        args.putString("ironwoodAvailableZatoshi", ironwoodAvailableZatoshi.value.toString())
-                        args.putString("ironwoodTotalZatoshi", ironwoodTotalZatoshi.value.toString())
-                    }
+                    emitBalance(alias, balancesMap?.values?.firstOrNull())
                 }
 
                 fun handleError(
@@ -668,6 +643,11 @@ class RNZcashModule(
      * JavaScript calls this from `subscribe()`, once its listeners are attached,
      * which is the only point at which delivery is guaranteed. Re-sending known
      * transactions is harmless: the app updates only the ones that changed.
+     *
+     * The balance has the same race. `walletBalances` only emits on a change, so
+     * a wallet whose balance settled before the listeners attached would leave
+     * the app reading zero spendable funds until the next transaction. Send the
+     * current balance here as well.
      */
     @ReactMethod
     fun emitExistingTransactions(
@@ -677,6 +657,10 @@ class RNZcashModule(
         val wallet = getWallet(alias)
         wallet.coroutineScope.launch {
             try {
+                wallet.walletBalances.value?.let { balancesMap ->
+                    emitBalance(alias, balancesMap.values.firstOrNull())
+                }
+
                 val txList = wallet.allTransactions.first()
                 // Parse in parallel, but fill the array on one thread: see the
                 // collector above - WritableArray is not safe for concurrent
@@ -765,6 +749,40 @@ class RNZcashModule(
             resolve(block())
         } catch (t: Throwable) {
             reject("Err", t)
+        }
+    }
+
+    private fun emitBalance(
+        alias: String,
+        accountBalance: AccountBalance?,
+    ) {
+        val transparentBalance = accountBalance?.unshielded
+        val saplingBalances = accountBalance?.sapling
+        val orchardBalances = accountBalance?.orchard
+
+        val transparentAvailableZatoshi = transparentBalance ?: Zatoshi(0L)
+        val transparentTotalZatoshi = transparentBalance ?: Zatoshi(0L)
+
+        val saplingAvailableZatoshi = saplingBalances?.available ?: Zatoshi(0L)
+        val saplingTotalZatoshi = saplingBalances?.total ?: Zatoshi(0L)
+
+        val orchardAvailableZatoshi = orchardBalances?.available ?: Zatoshi(0L)
+        val orchardTotalZatoshi = orchardBalances?.total ?: Zatoshi(0L)
+
+        val ironwoodBalances = accountBalance?.ironwood
+        val ironwoodAvailableZatoshi = ironwoodBalances?.available ?: Zatoshi(0L)
+        val ironwoodTotalZatoshi = ironwoodBalances?.total ?: Zatoshi(0L)
+
+        sendEvent("BalanceEvent") { args ->
+            args.putString("alias", alias)
+            args.putString("transparentAvailableZatoshi", transparentAvailableZatoshi.value.toString())
+            args.putString("transparentTotalZatoshi", transparentTotalZatoshi.value.toString())
+            args.putString("saplingAvailableZatoshi", saplingAvailableZatoshi.value.toString())
+            args.putString("saplingTotalZatoshi", saplingTotalZatoshi.value.toString())
+            args.putString("orchardAvailableZatoshi", orchardAvailableZatoshi.value.toString())
+            args.putString("orchardTotalZatoshi", orchardTotalZatoshi.value.toString())
+            args.putString("ironwoodAvailableZatoshi", ironwoodAvailableZatoshi.value.toString())
+            args.putString("ironwoodTotalZatoshi", ironwoodTotalZatoshi.value.toString())
         }
     }
 

@@ -1,5 +1,6 @@
 # Build output:
 /android/build/
+/android/maven/
 /ios/libzcashlc.xcframework/
 /ios/ZCashLightClientKit/
 /ios/zcashlc.h

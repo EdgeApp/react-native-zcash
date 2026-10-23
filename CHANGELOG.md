@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- changed: Upgrade to the NU7-aware ZODL wallet SDKs, built from source on the final NU7 crates (mainnet activation at block 3,543,405)
+
 ## 0.13.5 (2026-10-01)
 
 - changed: Update checkpoints

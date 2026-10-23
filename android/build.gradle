@@ -41,6 +41,21 @@ repositories {
   mavenCentral()
 }
 
+// The Zcash SDK we build from source (scripts/updateSources.ts) ships in a
+// local Maven repository. The app resolves our dependencies with its own
+// repositories, so add this one to every project:
+def zcashMaven = "$projectDir/maven"
+rootProject.allprojects {
+  repositories {
+    maven {
+      url(zcashMaven)
+      content {
+        includeGroup('com.zodl.android')
+      }
+    }
+  }
+}
+
 dependencies {
   implementation 'com.facebook.react:react-native:+'
 
@@ -49,8 +64,8 @@ dependencies {
 
   implementation 'androidx.appcompat:appcompat:1.6.1'
   implementation 'androidx.paging:paging-runtime-ktx:2.1.2'
-  implementation 'cash.z.ecc.android:zcash-android-sdk:2.7.0-rc.4'
-  implementation 'cash.z.ecc.android:zcash-android-sdk-incubator:2.7.0-rc.4'
+  implementation 'com.zodl.android:zcash-android-sdk:5.2.2-edge-nu7'
+  implementation 'com.zodl.android:zcash-android-sdk-incubator:5.2.2-edge-nu7'
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
 }

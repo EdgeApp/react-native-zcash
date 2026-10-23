@@ -117,13 +117,14 @@ class RNZcash: RCTEventEmitter {
           let wallet = try WalletSynchronizer(
             alias: alias, initializer: initializer, emitter: sendToJs)
           let seedBytes = try Mnemonic.deterministicSeedBytes(from: seed)
-          let initMode = newWallet ? WalletInitMode.newWallet : WalletInitMode.existingWallet
           let ufvk = try deriveUnifiedViewingKey(seed, network)
 
+          // The SDK derives new vs restore from the database and birthday,
+          // so `newWallet` has no iOS counterpart. Passing the stored
+          // birthday either way opens the wallet at its recorded height:
           _ = try await wallet.synchronizer.prepare(
             with: seedBytes,
             walletBirthday: birthdayHeight,
-            for: initMode,
             name: alias,
             keySource: nil
           )
@@ -236,7 +237,7 @@ class RNZcash: RCTEventEmitter {
         } catch let error as ZcashError {
           if case .rustCreateToAddress(let message) = error {
             // error message with amounts
-            reject("proposeTransferError", message, error)
+            reject("proposeTransferError", message.message, error)
           } else {
             reject("proposeTransferError", "Failed to propose transfer", error)
           }
