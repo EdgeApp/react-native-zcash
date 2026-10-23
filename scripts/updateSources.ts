@@ -25,6 +25,10 @@ async function main(): Promise<void> {
 // The Swift SDK commit to vendor: the 2.7.0-rc.4 tag, the release the Zcash team
 // confirmed production-ready for Ironwood (NU6.3). Pinned by commit rather than
 // tag name so the checkout is immutable even if the tag is ever moved.
+//
+// When bumping this, check that the SDK still sends `.foundTransactions` with
+// a nil range only for transactions it has just built and not yet submitted.
+// RNZcash.swift drops those reports (WalletSynchronizer.subscribe).
 const ZCASH_SWIFT_SDK_COMMIT = 'fb9f6cf46fa725efa6cb9e646e13a94f05a293bf'
 
 // SHA-256 of the libzcashlc.xcframework.zip this package links.

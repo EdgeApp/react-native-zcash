@@ -736,7 +736,18 @@ class WalletSynchronizer: NSObject {
         switch SynchronizerEvent {
         case .minedTransaction(let transaction):
           self.emitTxs(transactions: [transaction])
-        case .foundTransactions(let transactions, _):
+        case .foundTransactions(let transactions, let range):
+          // A nil range is the SDK reporting a transaction it has just built,
+          // before submitting it (SDKBroadcaster). Passing that on lets the app
+          // see a send before createTransfer resolves: edge-core-js's saveTx
+          // then finds the transaction already known and keeps none of the
+          // caller's metadata, and a send whose submit fails still shows as
+          // pending. The mempool watcher or the next scan reports the send
+          // once it is on the network.
+          //
+          // The SDK doesn't document what a nil range means. Re-check this
+          // when bumping ZCASH_SWIFT_SDK_COMMIT (scripts/updateSources.ts).
+          guard range != nil else { return }
           self.emitTxs(transactions: transactions)
         default:
           return
