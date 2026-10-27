@@ -23,6 +23,27 @@ actor SynchronizerStore {
 
 let synchronizerStore = SynchronizerStore()
 
+/// Txids of sends not yet mined or expired. See `WalletSynchronizer.watchSends`.
+actor WatchedSends {
+  private var txIds: Set<Data> = []
+
+  var all: Set<Data> {
+    txIds
+  }
+
+  func insert(_ ids: [Data]) {
+    txIds.formUnion(ids)
+  }
+
+  func remove(_ ids: [Data]) {
+    txIds.subtract(ids)
+  }
+
+  func removeAll() {
+    txIds.removeAll()
+  }
+}
+
 struct ConfirmedTx {
   var minedHeight: Int
   var toAddress: String?
@@ -301,23 +322,41 @@ class RNZcash: RCTEventEmitter {
           )
 
           var lastTxid = ""  // The last transfer is the most relevant to the user
+          // The SDK stores every transaction before submitting any, so a
+          // failed or skipped submit still leaves one behind:
+          var txIds: [Data] = []
+          var failure: Error?
           for try await tx in transactions {
             switch tx {
-            case .grpcFailure(_, let error):
-              throw error
+            case .grpcFailure(let txId, let error):
+              txIds.append(txId)
+              failure = failure ?? error
             case .success(let txId):
+              txIds.append(txId)
               lastTxid = txId.toHexStringTxId()
-              continue
-            case .submitFailure(txId: _, let code, let description):
-              throw NSError(
-                domain:
-                  "transaction failed to submit with code: \(code) - description: \(description)",
-                code: 0)
-            case .notAttempted(_):
-              throw NSError(domain: "transaction not attempted", code: 0)
+            case .submitFailure(let txId, let code, let description):
+              txIds.append(txId)
+              failure =
+                failure
+                ?? NSError(
+                  domain:
+                    "transaction failed to submit with code: \(code) - description: \(description)",
+                  code: 0)
+            case .notAttempted(let txId):
+              txIds.append(txId)
+              failure = failure ?? NSError(domain: "transaction not attempted", code: 0)
             }
           }
 
+          // A send that resolves is reported once the network has it, so the
+          // app can save its metadata first (see `subscribe`). A send that
+          // rejects gets no metadata, so report it now: the SDK holds its
+          // notes and rebroadcasts it until it expires, and without a row the
+          // balance would drop with nothing explaining why.
+          await wallet.watchSends(txIds, reportNow: failure != nil)
+          if let failure {
+            throw failure
+          }
           resolve(lastTxid)
         } catch {
           reject("createTransfer", "Failed to spend", error)
@@ -423,6 +462,11 @@ class RNZcash: RCTEventEmitter {
         do {
           let txs = try await wallet.synchronizer.allTransactions()
           await wallet.sendTxs(transactions: txs)
+          // Sends still waiting to be mined from before this launch:
+          let pending = txs.filter {
+            $0.isSentTransaction && $0.minedHeight == nil && $0.isExpiredUmined != true
+          }
+          await wallet.watchSends(pending.map { $0.rawID }, reportNow: false)
           resolve(nil)
         } catch {
           reject(
@@ -450,6 +494,7 @@ class RNZcash: RCTEventEmitter {
                 wallet.fullySynced = false
                 wallet.restart = true
                 wallet.initializeProcessorState()
+                await wallet.watchedSends.removeAll()
                 wallet.cancellables.forEach { $0.cancel() }
                 try await wallet.synchronizer.start()
                 wallet.subscribe()
@@ -710,6 +755,7 @@ class WalletSynchronizer: NSObject {
   var restart: Bool
   var processorState: ProcessorState
   var cancellables: [AnyCancellable] = []
+  let watchedSends = WatchedSends()
 
   init(alias: String, initializer: Initializer, emitter: @escaping (String, Any) -> Void) throws {
     self.alias = alias
@@ -741,9 +787,9 @@ class WalletSynchronizer: NSObject {
           // before submitting it (SDKBroadcaster). Passing that on lets the app
           // see a send before createTransfer resolves: edge-core-js's saveTx
           // then finds the transaction already known and keeps none of the
-          // caller's metadata, and a send whose submit fails still shows as
-          // pending. The mempool watcher or the next scan reports the send
-          // once it is on the network.
+          // caller's metadata. The mempool watcher or the next scan reports
+          // the send once it is on the network, and createTransfer reports
+          // one whose submit failed (see watchSends).
           //
           // The SDK doesn't document what a nil range means. Re-check this
           // when bumping ZCASH_SWIFT_SDK_COMMIT (scripts/updateSources.ts).
@@ -809,6 +855,8 @@ class WalletSynchronizer: NSObject {
       scanProgress = Double(progress) * 100
     case .synced:
       scanProgress = 100.0
+      // Expiry is judged against the scanned height, so check once caught up:
+      Task { await self.reportExpiredSends() }
     case .unprepared, .disconnected, .stopped:
       scanProgress = 0.0
     default:
@@ -828,6 +876,43 @@ class WalletSynchronizer: NSObject {
       "networkBlockHeight": self.processorState.networkBlockHeight,
     ]
     emit("UpdateEvent", data)
+  }
+
+  /// Watches sends until they are mined or expire, optionally reporting them
+  /// now.
+  ///
+  /// The SDK holds the notes an unmined send spends, and rebroadcasts it every
+  /// few minutes, until the send reaches its expiry height (about 40 blocks after it
+  /// was built). An expired send is never mined, its notes return to the
+  /// balance, and the app shows it as failed. The event stream reports a send
+  /// only when it is found or mined, so nothing would tell the app about the
+  /// expiry until the next launch (`emitExistingTransactions`).
+  func watchSends(_ txIds: [Data], reportNow: Bool) async {
+    if txIds.isEmpty { return }
+    await watchedSends.insert(txIds)
+    if reportNow {
+      let watched = Set(txIds)
+      let txs = await sentTransactions().filter { watched.contains($0.rawID) }
+      await sendTxs(transactions: txs)
+    }
+  }
+
+  /// Reports watched sends that have expired, and stops watching them and the
+  /// ones that were mined (the event stream reports those).
+  func reportExpiredSends() async {
+    let watched = await watchedSends.all
+    if watched.isEmpty { return }
+    let txs = await sentTransactions().filter { watched.contains($0.rawID) }
+    let settled = txs.filter { $0.minedHeight != nil || $0.isExpiredUmined == true }
+    await watchedSends.remove(settled.map { $0.rawID })
+    let expired = settled.filter { $0.minedHeight == nil }
+    if !expired.isEmpty {
+      await sendTxs(transactions: expired)
+    }
+  }
+
+  private func sentTransactions() async -> [ZcashTransaction.Overview] {
+    (try? await synchronizer.allSentTransactions()) ?? []
   }
 
   func initializeProcessorState() {
