@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fixed: (iOS) Report a send whose submit failed as pending, then as failed once it expires
 - fixed: iOS no longer reports a send before submitting it. The early report made edge-core-js drop the send's metadata, and a send whose submit failed still showed as pending.
 
 ## 0.13.5 (2026-10-01)
