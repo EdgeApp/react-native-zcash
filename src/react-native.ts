@@ -30,6 +30,25 @@ function parseJsonObject(value: string): unknown {
   }
 }
 
+/**
+ * JSON with each object's keys in sorted order. The native bridge does not
+ * keep key order stable between calls, so equal payloads can serialize
+ * differently under plain JSON.stringify.
+ */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, inner: unknown) => {
+    if (inner == null || typeof inner !== 'object' || Array.isArray(inner)) {
+      return inner
+    }
+    const record = inner as Record<string, unknown>
+    const sorted: Record<string, unknown> = {}
+    for (const key of Object.keys(record).sort((a, b) => a.localeCompare(b))) {
+      sorted[key] = record[key]
+    }
+    return sorted
+  })
+}
+
 export const Tools = {
   deriveViewingKey: async (
     seedBytesHex: string,
@@ -71,6 +90,8 @@ export class Synchronizer {
   private timer?: ReturnType<typeof setTimeout>
   private callbacks?: SynchronizerCallbacks
   private lastStatus?: string
+  private lastBalancesJson?: string
+  private lastTransactionsJson?: string
 
   constructor(alias: string, network: Network) {
     this.eventEmitter = new NativeEventEmitter(RNZcash)
@@ -187,13 +208,7 @@ export class Synchronizer {
       onUpdate,
       onError
     }
-    this.pump().catch(error => {
-      onError({
-        alias: this.alias,
-        level: 'error',
-        message: `event pump failed: ${String(error)}`
-      })
-    })
+    this.pumpAndReschedule()
   }
 
   unsubscribe(): void {
@@ -202,15 +217,54 @@ export class Synchronizer {
       this.timer = undefined
     }
     this.callbacks = undefined
+    this.lastStatus = undefined
+    this.lastBalancesJson = undefined
+    this.lastTransactionsJson = undefined
     this.subscriptions.forEach(subscription => {
       subscription.remove()
     })
     this.subscriptions = []
   }
 
-  private async pump(): Promise<void> {
+  /**
+   * Polls once, then schedules the next poll, sooner while syncing. A failed
+   * poll is reported and retried on the slower cadence.
+   */
+  private pumpAndReschedule(): void {
+    this.pump().then(
+      status => {
+        this.scheduleNextPump(status === 'SYNCING')
+      },
+      (error: unknown) => {
+        this.callbacks?.onError({
+          alias: this.alias,
+          level: 'error',
+          message: `event pump failed: ${String(error)}`
+        })
+        this.scheduleNextPump(false)
+      }
+    )
+  }
+
+  private scheduleNextPump(syncing: boolean): void {
+    if (this.callbacks == null) return
+    this.timer = setTimeout(
+      () => {
+        this.pumpAndReschedule()
+      },
+      syncing ? 500 : 2000
+    )
+  }
+
+  /**
+   * Delivers one poll to the callbacks. Balances and transactions go out
+   * only when they differ from the last delivery, since each crosses the
+   * bridge in full.
+   */
+  private async pump(): Promise<string | undefined> {
     if (this.callbacks == null) return
     const snap = await RNZcash.poll(this.alias)
+    if (this.callbacks == null) return
     const {
       onBalanceChanged,
       onStatusChanged,
@@ -218,30 +272,33 @@ export class Synchronizer {
       onUpdate
     } = this.callbacks
 
-    const event = {
-      ...snap.balances,
-      availableZatoshi: add(
-        add(
+    const balancesJson = stableJson(snap.balances)
+    if (balancesJson !== this.lastBalancesJson) {
+      this.lastBalancesJson = balancesJson
+      onBalanceChanged({
+        ...snap.balances,
+        availableZatoshi: add(
           add(
-            snap.balances.transparentAvailableZatoshi,
-            snap.balances.saplingAvailableZatoshi
+            add(
+              snap.balances.transparentAvailableZatoshi,
+              snap.balances.saplingAvailableZatoshi
+            ),
+            snap.balances.orchardAvailableZatoshi
           ),
-          snap.balances.orchardAvailableZatoshi
+          snap.balances.ironwoodAvailableZatoshi
         ),
-        snap.balances.ironwoodAvailableZatoshi
-      ),
-      totalZatoshi: add(
-        add(
+        totalZatoshi: add(
           add(
-            snap.balances.transparentTotalZatoshi,
-            snap.balances.saplingTotalZatoshi
+            add(
+              snap.balances.transparentTotalZatoshi,
+              snap.balances.saplingTotalZatoshi
+            ),
+            snap.balances.orchardTotalZatoshi
           ),
-          snap.balances.orchardTotalZatoshi
-        ),
-        snap.balances.ironwoodTotalZatoshi
-      )
+          snap.balances.ironwoodTotalZatoshi
+        )
+      })
     }
-    onBalanceChanged(event)
 
     if (snap.status !== this.lastStatus) {
       this.lastStatus = snap.status
@@ -251,23 +308,18 @@ export class Synchronizer {
       })
     }
 
-    onTransactionsChanged({ transactions: snap.transactions })
+    const transactionsJson = stableJson(snap.transactions)
+    if (transactionsJson !== this.lastTransactionsJson) {
+      this.lastTransactionsJson = transactionsJson
+      onTransactionsChanged({ transactions: snap.transactions })
+    }
+
     onUpdate({
       alias: this.alias,
       scanProgress: snap.scanProgress,
       networkBlockHeight: snap.networkBlockHeight
     })
-
-    const delay = snap.status === 'SYNCING' ? 500 : 2000
-    this.timer = setTimeout(() => {
-      this.pump().catch(error => {
-        this.callbacks?.onError({
-          alias: this.alias,
-          level: 'error',
-          message: `event pump failed: ${String(error)}`
-        })
-      })
-    }, delay)
+    return snap.status
   }
 }
 
