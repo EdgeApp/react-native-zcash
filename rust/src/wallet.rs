@@ -23,7 +23,9 @@ use zingolib::ensure_default_crypto_provider;
 use zingolib::lightclient::LightClient;
 use zingolib::wallet::error::ProposeSendError;
 use zingolib::wallet::keys::unified::{ReceiverSelection, UnifiedKeyStore};
-use zingolib::wallet::summary::data::{SendType, TransactionKind};
+use zingolib::wallet::summary::data::{
+    OutgoingNoteSummary, SendType, TransactionKind, TransactionSummary,
+};
 use zingolib::wallet::{
     PerformanceLevel, SyncConfig, TransparentAddressDiscovery, WalletSettings,
 };
@@ -452,33 +454,35 @@ pub async fn poll(alias: String) -> WalletResult<Poll> {
             .is_some_and(|value| !value.is_zero()),
     );
 
+    let summaries = slot
+        .client
+        .transaction_summaries(false)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut transactions = Vec::new();
-    if let Ok(summaries) = slot.client.transaction_summaries(false).await {
-        for tx in summaries.iter() {
-            let is_shielding = matches!(tx.kind, TransactionKind::Sent(SendType::Shield));
-            let to_address = tx
-                .outgoing_orchard_notes
-                .iter()
-                .chain(tx.outgoing_sapling_notes.iter())
-                .find_map(|note| note.recipient_unified_address.clone());
-            let mined_height = if let ConfirmationStatus::Confirmed(height) = tx.status {
-                u32::from(height) as i64
-            } else {
-                0
-            };
-            let is_expired = matches!(tx.status, ConfirmationStatus::Failed(_));
-            transactions.push(Transaction {
-                raw_transaction_id: tx.txid.to_string(),
-                block_time_in_seconds: i64::from(tx.datetime),
-                mined_height,
-                value: tx.value.to_string(),
-                fee: tx.fee.map(|fee| fee.to_string()),
-                to_address,
-                is_shielding,
-                is_expired,
-                memos: Vec::new(),
-            });
-        }
+    for tx in summaries.iter() {
+        let is_shielding = matches!(tx.kind, TransactionKind::Sent(SendType::Shield));
+        let to_address = match tx.kind {
+            TransactionKind::Sent(_) => sent_to_address(tx),
+            TransactionKind::Received => None,
+        };
+        let mined_height = if let ConfirmationStatus::Confirmed(height) = tx.status {
+            u32::from(height) as i64
+        } else {
+            0
+        };
+        let is_expired = matches!(tx.status, ConfirmationStatus::Failed(_));
+        transactions.push(Transaction {
+            raw_transaction_id: tx.txid.to_string(),
+            block_time_in_seconds: i64::from(tx.datetime),
+            mined_height,
+            value: tx.value.to_string(),
+            fee: tx.fee.map(|fee| fee.to_string()),
+            to_address,
+            is_shielding,
+            is_expired,
+            memos: memos(tx),
+        });
     }
 
     Ok(Poll {
@@ -489,6 +493,68 @@ pub async fn poll(alias: String) -> WalletResult<Poll> {
         balances,
         transactions,
     })
+}
+
+/// The address a sent transaction paid. The outgoing notes and coins
+/// include the wallet's own change, so an output the wallet also received is
+/// skipped. A send to self has no other output and reports its own address.
+fn sent_to_address(tx: &TransactionSummary) -> Option<String> {
+    let shielded = [
+        (&tx.outgoing_ironwood_notes, &tx.ironwood_notes),
+        (&tx.outgoing_orchard_notes, &tx.orchard_notes),
+        (&tx.outgoing_sapling_notes, &tx.sapling_notes),
+    ];
+    let address = |note: &OutgoingNoteSummary| {
+        note.recipient_unified_address
+            .clone()
+            .unwrap_or_else(|| note.recipient.clone())
+    };
+    let external_note = shielded.iter().find_map(|(outgoing, owned)| {
+        outgoing
+            .iter()
+            .find(|note| !owned.iter().any(|own| own.output_index == note.output_index))
+            .map(address)
+    });
+    external_note
+        .or_else(|| {
+            tx.outgoing_transparent_coins
+                .iter()
+                .find(|coin| {
+                    !tx.transparent_coins
+                        .iter()
+                        .any(|own| own.output_index == coin.output_index)
+                })
+                .map(|coin| coin.recipient.clone())
+        })
+        .or_else(|| {
+            shielded
+                .iter()
+                .find_map(|(outgoing, _)| outgoing.first().map(address))
+        })
+}
+
+/// The text memos on a transaction's outputs, each once. A note sent to self
+/// appears as both an outgoing and a received note.
+fn memos(tx: &TransactionSummary) -> Vec<String> {
+    let received = tx
+        .ironwood_notes
+        .iter()
+        .chain(&tx.orchard_notes)
+        .chain(&tx.sapling_notes)
+        .filter_map(|note| note.memo.as_ref());
+    let sent = tx
+        .outgoing_ironwood_notes
+        .iter()
+        .chain(&tx.outgoing_orchard_notes)
+        .chain(&tx.outgoing_sapling_notes)
+        .filter_map(|note| note.memo.as_ref());
+    let mut memos: Vec<String> = Vec::new();
+    for memo in sent.chain(received) {
+        if !memo.is_empty() && !memos.contains(memo) {
+            memos.push(memo.clone());
+        }
+    }
+    memos
 }
 
 const STORED_PROPOSAL_PREFIX: &str = "stored:";
