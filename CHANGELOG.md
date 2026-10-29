@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- changed: Replace ZcashLightClientKit and zcash-android-sdk with zingolib, adding NU7 support
+- changed: Download the Sapling parameters on first use instead of bundling them
+
 ## 0.13.6 (2026-10-28)
 
 - changed: Update checkpoints

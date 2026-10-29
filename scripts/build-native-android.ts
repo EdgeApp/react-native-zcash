@@ -78,38 +78,24 @@ async function main(): Promise<void> {
       )
   )
 
+  // The two ABIs edge-react-gui ships. x86_64 is only for Intel emulators.
   const abis: Array<{ target: string; abi: string }> = [
-    { target: 'aarch64-linux-android', abi: 'arm64-v8a' }
+    { target: 'aarch64-linux-android', abi: 'arm64-v8a' },
+    { target: 'armv7-linux-androideabi', abi: 'armeabi-v7a' }
   ]
   if (process.arch !== 'arm64' || process.env.ZCASH_ANDROID_X86_64 === '1') {
     abis.push({ target: 'x86_64-linux-android', abi: 'x86_64' })
   }
-  // Apple Silicon emulators are arm64; still build x86_64 when requested.
-  if (process.env.ZCASH_ANDROID_X86_64 === '1') {
-    // already added above for non-arm64; ensure present on arm64 hosts too
-    if (!abis.some(item => item.abi === 'x86_64')) {
-      abis.push({ target: 'x86_64-linux-android', abi: 'x86_64' })
-    }
-  }
 
-  // Always include arm64. On Apple Silicon also include arm64 emulator.
+  // 16 KB pages are required of 64-bit native code on Android 15+.
+  const pageSizeFlags =
+    '-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384'
   for (const { target, abi } of abis) {
-    await run(
-      'cargo',
-      [
-        'ndk',
-        '-t',
-        abi === 'arm64-v8a' ? 'arm64-v8a' : 'x86_64',
-        'build',
-        '--release'
-      ],
-      rustDir,
-      {
-        ANDROID_NDK_HOME: ndk,
-        CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS:
-          '-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384'
-      }
-    )
+    await run('cargo', ['ndk', '-t', abi, 'build', '--release'], rustDir, {
+      ANDROID_NDK_HOME: ndk,
+      CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS: pageSizeFlags,
+      CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS: pageSizeFlags
+    })
     const destDir = join(androidJni, abi)
     await mkdir(destDir, { recursive: true })
     // Ship one copy, under the name the app actually loads. RNZcashModule's
