@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use nonempty::NonEmpty;
 use once_cell::sync::Lazy;
+use pepper_sync::error::SyncRecoveryObservables;
 use pepper_sync::wallet::SyncMode;
 use zcash_address::{ToAddress, ZcashAddress};
 use zcash_client_backend::data_api::error::Error as ZcbError;
@@ -401,6 +402,15 @@ pub fn ironwood_activation_height(network: String) -> Option<u32> {
 pub async fn poll(alias: String) -> WalletResult<Poll> {
     let slot = client_slot(&alias).await?;
     let mut slot = slot.lock().await;
+
+    // A failed session leaves the wallet behind until another one starts,
+    // and the client reports the failure only to a caller that polls for it.
+    if let Some((recovery, description)) = slot.client.poll_sync_recovery() {
+        if recovery != SyncRecoveryObservables::Abort {
+            slot.client.sync().await.map_err(|e| e.to_string())?;
+        }
+        return Err(format!("sync failed: {description}"));
+    }
 
     // A continuous sync session keeps running after it reaches the tip, so
     // the session being alive does not mean the wallet is behind. The latest
