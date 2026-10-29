@@ -1,25 +1,10 @@
 # react-native-zcash
 
-This library packages the ZCashLightClientKit for use on React Native.
+This library packages [zingolib](https://github.com/zingolabs/zingolib) for use on React Native, through a Rust crate under `rust/` that UniFFI binds to Swift and Kotlin.
 
 ## Usage
 
 First, add this library to your React Native app using NPM or Yarn, and run `pod install` as necessary to integrate it with your app's native code.
-
-If you encounter errors during `pod install`, you may need to add the following code to the `target` section of your Podfile:
-
-```ruby
-# Zcash transitive dependencies:
-pod 'CGRPCZlib', :modular_headers => true
-pod 'CNIOAtomics', :modular_headers => true
-pod 'CNIOBoringSSL', :modular_headers => true
-pod 'CNIOBoringSSLShims', :modular_headers => true
-pod 'CNIODarwin', :modular_headers => true
-pod 'CNIOHTTPParser', :modular_headers => true
-pod 'CNIOLinux', :modular_headers => true
-pod 'CNIOWindows', :modular_headers => true
-pod 'sqlite3', :modular_headers => true
-```
 
 On the Android side, you may need to configure an explicit Kotlin version, so all your native dependencies will be compatible with one another. Simply define `kotlinVersion` in your `android/build.gradle` file:
 
@@ -55,17 +40,16 @@ buildscript {
 
 ## Developing
 
-This library relies on a large amount of native code from other repos. To integrate this code, you must run the following script before publishing this library to NPM:
+The native libraries are built from `rust/` and are not checked in. Build them before running the library in an app or publishing it to NPM:
 
 ```sh
-npm run update-sources
+npm run build-native-ios
+npm run build-native-android
 ```
 
-This script will download ZCashLightClientKit and zcash-light-client-ffi, modify them for React Native, and integrate them with our wrapper code.
+The iOS script writes `ios/libzcash.xcframework` and the Swift bindings. The Android script writes `android/src/main/jniLibs/` and the Kotlin bindings, and needs `cargo-ndk` and Android NDK 27.1.12297006. `prepublishOnly` runs both. zingolib is pinned by git revision in `rust/Cargo.toml`.
 
-The `update-sources` script is also the place to make edits when upgrading any of the third-party dependencies.
-
-We also have an `update-checkpoints` command that will connect to a node and generate fresh checkpoints based on the chain state.
+The Sapling proving parameters are not bundled. The library downloads them into the app's document directory the first time a wallet holds Sapling funds, and before signing a send that needs them.
 
 ### Source Formatting
 

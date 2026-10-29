@@ -27,19 +27,25 @@
     "/package.json",
     "/react-native-zcash.podspec",
     "/README.md",
+    "/rust/build.rs",
+    "/rust/Cargo.lock",
+    "/rust/Cargo.toml",
+    "/rust/rust-toolchain.toml",
+    "/rust/src/",
+    "/rust/uniffi-bindgen.rs",
     "/src/"
   ],
   "scripts": {
     "build": "(cd android && gradle assemble -DheapDumpOnOutOfMemoryError=false)",
+    "build-native-android": "node -r sucrase/register ./scripts/build-native-android.ts",
+    "build-native-ios": "node -r sucrase/register ./scripts/build-native-ios.ts",
     "fix-kotlin": "ktlint --format 'android/src/**/*.kt'",
-    "fix-swift": "swift-format format -i ios/RNZcash.swift",
+    "fix-swift": "swift-format format -i ios/RNZcash.swift ios/EdgeZcashClient.swift",
     "fix": "npm run lint -- --fix",
     "lint": "eslint .",
     "precommit": "lint-staged && npm run prepare",
-    "prepack": "npm run update-checkpoints && npm run update-sources",
     "prepare": "husky install && rimraf lib && rollup -c && tsc",
-    "update-checkpoints": "node -r sucrase/register scripts/updateCheckpoints.ts",
-    "update-sources": "node -r sucrase/register ./scripts/updateSources.ts"
+    "prepublishOnly": "npm run build-native-ios && npm run build-native-android"
   },
   "lint-staged": {
     "*.{js,ts}": "eslint"

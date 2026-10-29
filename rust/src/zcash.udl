@@ -1,0 +1,104 @@
+[Error]
+interface ZcashError {
+  Internal(string message);
+};
+
+dictionary Addresses {
+  string unified_address;
+  string sapling_address;
+  string transparent_address;
+};
+
+dictionary Balance {
+  string transparent_available_zatoshi;
+  string transparent_total_zatoshi;
+  string sapling_available_zatoshi;
+  string sapling_total_zatoshi;
+  string orchard_available_zatoshi;
+  string orchard_total_zatoshi;
+  string ironwood_available_zatoshi;
+  string ironwood_total_zatoshi;
+};
+
+dictionary Transaction {
+  string raw_transaction_id;
+  i64 block_time_in_seconds;
+  i64 mined_height;
+  string value;
+  string? fee;
+  string? to_address;
+  boolean is_shielding;
+  boolean is_expired;
+  sequence<string> memos;
+};
+
+dictionary Poll {
+  string alias;
+  string status;
+  f64 scan_progress;
+  u32 network_block_height;
+  Balance balances;
+  sequence<Transaction> transactions;
+};
+
+namespace zcash {
+  [Throws=ZcashError]
+  void set_document_directory(string path);
+
+  [Throws=ZcashError]
+  void initialize(
+    string mnemonic_seed,
+    u32 birthday_height,
+    string alias,
+    string network_name,
+    string default_host,
+    u32 default_port,
+    boolean new_wallet
+  );
+
+  [Throws=ZcashError]
+  string stop(string alias);
+
+  [Throws=ZcashError]
+  void rescan(string alias);
+
+  [Throws=ZcashError]
+  Addresses derive_unified_address(string alias);
+
+  [Throws=ZcashError]
+  u32 get_latest_network_height(string alias);
+
+  [Throws=ZcashError]
+  u32 get_birthday_height(string host, u32 port);
+
+  boolean is_valid_address(string address, string network);
+
+  [Throws=ZcashError]
+  string derive_viewing_key(string mnemonic_seed, string network);
+
+  u32? ironwood_activation_height(string network);
+
+  [Throws=ZcashError]
+  Poll poll(string alias);
+
+  [Throws=ZcashError]
+  string propose_transfer(string alias, string zatoshi, string to_address, string? memo);
+
+  [Throws=ZcashError]
+  string create_transfer(string alias, string proposal_base64, string mnemonic_seed);
+
+  [Throws=ZcashError]
+  string broadcast_transfer(string alias, string txid);
+
+  [Throws=ZcashError]
+  string shield_funds(string alias, string seed, string memo, string threshold);
+
+  [Throws=ZcashError]
+  string propose_orchard_to_ironwood_migration(string alias);
+
+  [Throws=ZcashError]
+  string propose_fulfilling_payment_uri(string alias, string payment_uri);
+
+  [Throws=ZcashError]
+  void emit_existing_transactions(string alias);
+};

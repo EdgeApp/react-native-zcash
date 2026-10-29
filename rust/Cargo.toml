@@ -1,0 +1,63 @@
+[package]
+name = "edge-zcash"
+version = "0.13.2"
+edition = "2024"
+publish = false
+
+[lib]
+name = "zcash"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+bip0039 = { version = "0.14", features = ["rand"] }
+blake2b_simd = "1"
+hex = "0.4"
+http = "1"
+json = "0.12"
+nonempty = "0.11"
+once_cell = "1"
+pepper-sync = { git = "https://github.com/EdgeApp/zingolib", rev = "05e80a8e444285d48df38e0442b67b06d3ec00b0" }
+# The Sapling parameter download. The webpki roots and the absent provider
+# follow zingolib: `ensure_default_crypto_provider` installs aws-lc-rs.
+reqwest = { version = "0.12.15", default-features = false, features = [
+    "rustls-tls-webpki-roots-no-provider",
+] }
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "rt-multi-thread", "sync"] }
+uniffi = { version = "0.29", features = ["cli"] }
+zcash_address = "=0.14.0"
+zcash_client_backend = { version = "=0.25.0", default-features = false, features = [
+    "orchard",
+    "transparent-inputs",
+] }
+zcash_keys = { version = "=0.17.0", features = [
+    "transparent-inputs",
+    "sapling",
+    "orchard",
+] }
+zcash_protocol = "=0.11.0"
+zingolib = { git = "https://github.com/EdgeApp/zingolib", rev = "05e80a8e444285d48df38e0442b67b06d3ec00b0", default-features = false, features = [
+    "runtime-sapling-params",
+] }
+zingo-status = { git = "https://github.com/EdgeApp/zingolib", rev = "05e80a8e444285d48df38e0442b67b06d3ec00b0" }
+zip32 = "0.3"
+
+[build-dependencies]
+uniffi = { version = "0.29", features = ["build"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+# The iOS app links every native module into one binary, and an ARM64 direct
+# branch reaches 128 MB, so each module has to leave room for the others.
+# Optimizing for size also keeps the published package down: the unoptimized
+# build produced a 147 MB static library per slice.
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true
+# Deliberately not `panic = "abort"`: UniFFI turns a Rust panic into a
+# host-side error, and aborting would take the app down instead.
