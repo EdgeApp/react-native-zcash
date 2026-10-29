@@ -11,6 +11,10 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 bip0039 = { version = "0.14", features = ["rand"] }
 blake2b_simd = "1"
+# h2 0.4.16 closes the connection once more than about 100 small DATA frames
+# sit unread. Testnet compact blocks are small enough to trip that during a
+# long block-range stream, and neither hyper nor tonic exposes the budget yet.
+h2 = "=0.4.15"
 hex = "0.4"
 http = "1"
 json = "0.12"
